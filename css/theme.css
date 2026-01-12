@@ -1,24 +1,47 @@
 :root {
-  --bg-color: #263238;
-  --bg-pattern: rgba(255,255,255,0.03);
+    /* Kleurenpalet */
+    --bg-color: #263238;
+    --bg-pattern: rgba(255,255,255,0.03);
+    
+    --ui-bg: rgba(33, 33, 33, 0.98);
+    --ui-border: rgba(255,255,255,0.12);
+    
+    --ui-text: #ffffff;
+    --ui-text-muted: #b0bec5;
+    
+    /* Branding Colors */
+    --ui-accent: #2979ff;
+    --ui-accent-hover: #2962ff;
+    
+    --ui-success: #00e676;
+    --ui-warning: #ffa726;
+    --ui-danger: #ff1744;
 
-  --sticky-bg: #FFD600;
-  --sticky-header: rgba(0,0,0,0.08);
-  --sticky-border: #FBC02D;
-  --sticky-text: #1a237e;
+    /* Sticky Notes */
+    --sticky-bg: #FFD600;
+    --sticky-text: #1a237e;
+    --sticky-border: #FBC02D;
+    
+    /* Status Colors */
+    --status-happy-bg: #66BB6A;
+    --status-neutral-bg: #FFA726;
+    --status-sad-bg: #EF5350;
 
-  --status-happy-bg: #66BB6A;
-  --status-neutral-bg: #FFA726;
-  --status-sad-bg: #EF5350;
+    /* Afmetingen */
+    --col-width: 190px;
+    --slot-min-height: 160px;
+    --gap: 6px;
+}
 
-  --ui-bg: rgba(33, 33, 33, 0.98);
-  --ui-text: #ffffff;
-  --ui-accent: #2979ff;
-  --ui-success: #00e676;
-  --ui-danger: #ff1744;
-  --ui-border: rgba(255,255,255,0.1);
+* { box-sizing: border-box; }
 
-  --col-width: 185px;
-  --slot-min-height: 170px;
-  --gap: 4px;
+body {
+    margin: 0;
+    font-family: 'Inter', sans-serif;
+    background-color: var(--bg-color);
+    background-image: radial-gradient(var(--bg-pattern) 1px, transparent 1px);
+    background-size: 20px 20px;
+    color: #333;
+    height: 100vh;
+    overflow: hidden;
 }

@@ -2,8 +2,8 @@
 <html lang="nl">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Proces Analyse Project Board</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Proces Analyse Project Board (SIPOC)</title>
   
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   
@@ -21,39 +21,57 @@
   <div class="topbar" id="topbar">
     <div class="topbar-content">
       <div class="top-row">
+        
         <div class="sheet-controls">
             <span class="sheet-label">PROCES:</span>
-            <select id="sheetSelect" class="sheet-select"></select>
-            <button class="btn-icon" id="btnRenameSheet" title="Hernoem">✎</button>
-            <button class="btn-icon" id="btnAddSheet" title="Nieuw">+</button>
-            <button class="btn-icon danger" id="btnDelSheet" title="Verwijder">×</button>
+            <select id="sheetSelect" class="sheet-select" title="Wissel van procesblad"></select>
+            <button class="btn-icon" id="btnRenameSheet" title="Huidig blad hernoemen">✎</button>
+            <button class="btn-icon" id="btnAddSheet" title="Nieuw blad toevoegen">+</button>
+            <button class="btn-icon danger" id="btnDelSheet" title="Huidig blad verwijderen">×</button>
+        </div>
+
+        <div class="project-title-wrapper">
+            <input id="boardTitle" class="project-title-input" placeholder="Naam van Project..." spellcheck="false" />
         </div>
 
         <div class="actions">
           <div class="zoom-controls">
-            <button class="zoom-btn" id="zoomOut">-</button>
+            <button class="zoom-btn" id="zoomOut" title="Uitzoomen">-</button>
             <div class="zoom-display" id="zoomDisplay">100%</div>
-            <button class="zoom-btn" id="zoomIn">+</button>
+            <button class="zoom-btn" id="zoomIn" title="Inzoomen">+</button>
           </div>
 
-          <button class="std-btn" id="btnManageCols">👁️ Kolommen</button>
-          <button class="std-btn" id="saveBtn">Opslaan</button>
-          <button class="std-btn" id="loadBtn">Laden</button>
-          <button class="std-btn" id="exportCsvBtn">Export Excel</button>
-          <button class="std-btn" id="exportBtn">Export PNG</button>
-          <button class="std-btn" id="clearBtn">Reset</button>
+          <div class="divider-vertical"></div>
+
+          <button class="std-btn" id="btnManageCols" title="Kolommen verbergen/tonen">👁️ Kolommen</button>
+          <button class="std-btn" id="saveBtn" title="Opslaan als JSON">💾 Opslaan</button>
+          <button class="std-btn" id="loadBtn" title="JSON bestand laden">📂 Laden</button>
+          
+          <div class="divider-vertical"></div>
+
+          <button class="std-btn accent-text" id="exportCsvBtn" title="Exporteer data naar Excel/CSV">📊 Excel</button>
+          <button class="std-btn" id="exportBtn" title="Maak screenshot">📸 Foto</button>
+          <button class="std-btn danger-text" id="clearBtn" title="Alles wissen">🗑️ Reset</button>
         </div>
       </div>
 
       <div class="dashboard-bar">
-        <div class="stat-item">🙂 <span class="stat-pill pill-green" id="countHappy">0</span></div>
-        <div class="stat-item">😐 <span class="stat-pill pill-orange" id="countNeutral">0</span></div>
-        <div class="stat-item">☹️ <span class="stat-pill pill-red" id="countSad">0</span></div>
-        <span class="stat-info">(Statistieken per blad)</span>
+        <div class="stat-group">
+            <div class="stat-item" title="Aantal stappen 'In Control'">
+                🙂 <span class="stat-pill pill-green" id="countHappy">0</span>
+            </div>
+            <div class="stat-item" title="Aantal stappen 'Kwetsbaar'">
+                😐 <span class="stat-pill pill-orange" id="countNeutral">0</span>
+            </div>
+            <div class="stat-item" title="Aantal stappen 'Niet in Control'">
+                ☹️ <span class="stat-pill pill-red" id="countSad">0</span>
+            </div>
+        </div>
+        <span class="stat-info">LIVE STATUS (Huidig Blad)</span>
       </div>
     </div>
 
-    <div class="topbar-toggle-bar" id="menuToggle">
+    <div class="topbar-toggle-bar" id="menuToggle" title="Klik om menu in/uit te klappen">
       <span id="toggleText">Menu Inklappen</span> <span class="toggle-icon">▲</span>
     </div>
   </div>
@@ -61,6 +79,7 @@
   <div class="viewport" id="viewport">
     <div id="board">
       <div id="row-headers"></div>
+      
       <div id="board-content-wrapper">
         <div id="board-header-display">Laden...</div>
         <div id="cols"></div>
@@ -71,7 +90,9 @@
   <div class="modal-overlay" id="editModal">
     <div class="modal">
       <h3 id="modalTitle">Analyse</h3>
+      
       <div id="modalContent"></div>
+      
       <div class="modal-btns">
         <button class="std-btn" id="modalCancelBtn">Annuleren</button>
         <button class="std-btn primary" id="modalSaveBtn">Opslaan</button>
@@ -80,10 +101,12 @@
   </div>
 
   <div class="modal-overlay" id="colManagerModal">
-    <div class="modal" style="width: 500px;">
+    <div class="modal" style="width: 400px; max-width: 90vw;">
         <h3>Kolommen Beheer</h3>
-        <div class="sub-text">Vink uit om kolommen te verbergen.</div>
+        <div class="sub-text">Vink items uit om kolommen tijdelijk te verbergen op het bord.</div>
+        
         <div id="colManagerList"></div>
+        
         <div class="modal-btns">
             <button class="std-btn primary" id="colManagerCloseBtn">Sluiten</button>
         </div>
