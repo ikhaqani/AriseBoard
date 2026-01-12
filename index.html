@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Proces Analyse Project Board</title>
+  
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="css/theme.css">
+  <link rel="stylesheet" href="css/main.css">
+</head>
+<body>
+
+  <input type="file" id="fileInput" style="display:none" accept=".json" />
+
+  <div class="topbar" id="topbar">
+    <div class="topbar-content">
+      <div class="top-row">
+        <div class="sheet-controls">
+            <span class="sheet-label">PROCES:</span>
+            <select id="sheetSelect" class="sheet-select"></select>
+            <button class="btn-icon" id="btnRenameSheet" title="Hernoem">✎</button>
+            <button class="btn-icon" id="btnAddSheet" title="Nieuw">+</button>
+            <button class="btn-icon danger" id="btnDelSheet" title="Verwijder">×</button>
+        </div>
+
+        <div class="actions">
+          <div class="zoom-controls">
+            <button class="zoom-btn" id="zoomOut">-</button>
+            <div class="zoom-display" id="zoomDisplay">100%</div>
+            <button class="zoom-btn" id="zoomIn">+</button>
+          </div>
+
+          <button class="std-btn" id="btnManageCols">👁️ Kolommen</button>
+          <button class="std-btn" id="saveBtn">Opslaan</button>
+          <button class="std-btn" id="loadBtn">Laden</button>
+          <button class="std-btn" id="exportCsvBtn">Export Excel</button>
+          <button class="std-btn" id="exportBtn">Export PNG</button>
+          <button class="std-btn" id="clearBtn">Reset</button>
+        </div>
+      </div>
+
+      <div class="dashboard-bar">
+        <div class="stat-item">🙂 <span class="stat-pill pill-green" id="countHappy">0</span></div>
+        <div class="stat-item">😐 <span class="stat-pill pill-orange" id="countNeutral">0</span></div>
+        <div class="stat-item">☹️ <span class="stat-pill pill-red" id="countSad">0</span></div>
+        <span class="stat-info">(Statistieken per blad)</span>
+      </div>
+    </div>
+
+    <div class="topbar-toggle-bar" id="menuToggle">
+      <span id="toggleText">Menu Inklappen</span> <span class="toggle-icon">▲</span>
+    </div>
+  </div>
+
+  <div class="viewport" id="viewport">
+    <div id="board">
+      <div id="row-headers"></div>
+      <div id="board-content-wrapper">
+        <div id="board-header-display">Laden...</div>
+        <div id="cols"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="editModal">
+    <div class="modal">
+      <h3 id="modalTitle">Analyse</h3>
+      <div id="modalContent"></div>
+      <div class="modal-btns">
+        <button class="std-btn" id="modalCancelBtn">Annuleren</button>
+        <button class="std-btn primary" id="modalSaveBtn">Opslaan</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="colManagerModal">
+    <div class="modal" style="width: 500px;">
+        <h3>Kolommen Beheer</h3>
+        <div class="sub-text">Vink uit om kolommen te verbergen.</div>
+        <div id="colManagerList"></div>
+        <div class="modal-btns">
+            <button class="std-btn primary" id="colManagerCloseBtn">Sluiten</button>
+        </div>
+    </div>
+  </div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
