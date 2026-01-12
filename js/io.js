@@ -1,45 +1,52 @@
 import { state } from './state.js';
+import { Toast } from './toast.js';
 
 /**
  * io.js
- * Verantwoordelijk voor Import, Export (JSON, CSV) en Screenshots.
+ * High-Performance Import/Export Module.
+ * Features: File System Access API, Clipboard integration, High-DPI Screenshots.
  */
 
 // --- Helpers ---
 
 /**
- * Sanitized tekst voor CSV formaat (RFC 4180).
- * Escapet dubbele quotes en wikkelt tekst in quotes.
+ * Maakt tekst veilig voor CSV (RFC 4180 standaard).
+ * @param {any} text 
  */
 const toCsvField = (text) => {
     if (text === null || text === undefined) return '""';
-    const stringText = String(text);
-    // Vervang " door "" en wikkel in "
-    return `"${stringText.replace(/"/g, '""').replace(/\n/g, ' ')}"`;
+    const str = String(text);
+    // Vervang " door "" en wrap in "
+    return `"${str.replace(/"/g, '""').replace(/\n/g, ' ')}"`;
 };
 
 /**
- * Genereert een bestandsnaam op basis van de projecttitel en datum.
+ * Genereert een consistente bestandsnaam met timestamp.
+ * @param {string} ext - Extensie (zonder punt).
  */
-const getFileName = (extension) => {
+const getFileName = (ext) => {
     const title = state.data.projectTitle || "sipoc_project";
     const safeTitle = title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-    const date = new Date().toISOString().split('T')[0];
-    return `${safeTitle}_${date}.${extension}`;
+    
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0,10);
+    const timeStr = now.toTimeString().slice(0,8).replace(/:/g, ''); // HHMMSS
+    
+    return `${safeTitle}_${dateStr}_${timeStr}.${ext}`;
 };
 
-// --- Export Functies ---
+// --- JSON Import / Export ---
 
 /**
- * Slaat het project op als JSON.
- * Gebruikt File System Access API indien beschikbaar, anders klassieke download.
+ * Slaat het project op als JSON bestand.
+ * Probeert de moderne 'Save As' dialoog te gebruiken.
  */
 export async function saveToFile() {
     const dataStr = JSON.stringify(state.data, null, 2);
     const fileName = getFileName('json');
 
     try {
-        // 1. Moderne browser methode (Chrome, Edge, Opera)
+        // 1. Moderne Browser API (Chrome, Edge)
         if ('showSaveFilePicker' in window) {
             const handle = await window.showSaveFilePicker({ 
                 suggestedName: fileName, 
@@ -51,169 +58,192 @@ export async function saveToFile() {
             const writable = await handle.createWritable();
             await writable.write(dataStr); 
             await writable.close();
-            return;
+            return; // Success handled by caller toast
         }
     } catch (err) {
-        if (err.name === 'AbortError') return; // Gebruiker annuleerde
-        console.warn("File System Access API failed, falling back to blob.", err);
+        if (err.name === 'AbortError') return; // User cancelled
+        console.warn("FS API failed/cancelled, falling back to legacy download.");
     }
 
-    // 2. Fallback methode (Firefox, Safari, etc.)
-    const blob = new Blob([dataStr], { type: "application/json" });
+    // 2. Legacy Fallback (Safari, Firefox)
+    downloadBlob(new Blob([dataStr], { type: "application/json" }), fileName);
+}
+
+/**
+ * Laadt een JSON bestand en update de state.
+ * @param {File} file 
+ * @param {Function} onSuccess - Callback na succes.
+ */
+export function loadFromFile(file, onSuccess) {
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+        try {
+            const parsed = JSON.parse(ev.target.result);
+
+            // Validatie: check of cruciale velden bestaan
+            if (!parsed || !Array.isArray(parsed.sheets)) {
+                throw new Error("Ongeldig formaat: Geen sheets gevonden.");
+            }
+
+            // State update (State manager handelt sanitization af indien nodig)
+            state.project = parsed;
+            state.saveToStorage();
+            
+            if (onSuccess) onSuccess();
+            
+        } catch (err) {
+            console.error("Load Error:", err);
+            Toast.show(`Fout bij laden: ${err.message}`, 'error');
+        }
+    };
+    reader.readAsText(file);
+}
+
+// --- CSV / Excel Export ---
+
+export function exportToCSV() {
+    try {
+        const headers = [
+            "Sheet", "Kolom", "ID", "Stap", "Inhoud", 
+            "Type", "Waarde", "Status", "Score", 
+            "QA / Specs", "Root Causes", "Maatregelen"
+        ];
+
+        let csvLines = [headers.join(";")];
+        let globalIn = 0, globalOut = 0;
+
+        state.data.sheets.forEach(sheet => {
+            sheet.columns.forEach((col, colIdx) => {
+                // Bereken ID's voor mapping
+                let rowId = "";
+                if (col.slots[2].text?.trim()) { globalIn++; rowId = `IN${globalIn}`; }
+                if (col.slots[4].text?.trim()) { globalOut++; rowId = `OUT${globalOut}`; }
+
+                // Map elke slot naar een CSV rij
+                col.slots.forEach((slot, slotIdx) => {
+                    const rowLabels = ["Lev", "Sys", "Input", "Proces", "Output", "Klant"];
+                    
+                    // Format specifieke velden
+                    let score = "";
+                    if (slotIdx === 1 && slot.systemData) score = `${slot.systemData.calculatedScore || 0}%`;
+                    
+                    let details = "";
+                    if (slot.qa) {
+                        details = Object.entries(slot.qa)
+                            .filter(([_, v]) => v.result) // Alleen ingevulde tonen
+                            .map(([k, v]) => `${k}:${v.result}`)
+                            .join(" | ");
+                    }
+
+                    const rowData = [
+                        sheet.name,
+                        colIdx + 1,
+                        (slotIdx === 2 || slotIdx === 4) ? rowId : "",
+                        rowLabels[slotIdx],
+                        slot.text,
+                        slot.type || "",
+                        slot.processValue || "",
+                        slot.processStatus || "",
+                        score,
+                        details,
+                        (slot.causes || []).join(" | "),
+                        (slot.improvements || []).join(" | ")
+                    ];
+
+                    csvLines.push(rowData.map(toCsvField).join(";"));
+                });
+            });
+        });
+
+        // BOM toevoegen voor correcte weergave in Excel (UTF-8)
+        const blob = new Blob(["\uFEFF" + csvLines.join("\n")], { type: "text/csv;charset=utf-8;" });
+        downloadBlob(blob, getFileName('csv'));
+
+    } catch (e) {
+        console.error(e);
+        Toast.show("Fout bij genereren CSV", 'error');
+    }
+}
+
+// --- Image Export (High DPI) ---
+
+/**
+ * Maakt een screenshot van het bord.
+ * @param {boolean} copyToClipboard - Indien true, kopieert naar klembord i.p.v. download.
+ */
+export async function exportHD(copyToClipboard = false) {
+    if (typeof html2canvas === 'undefined') {
+        Toast.show("Export module niet geladen", 'error');
+        return;
+    }
+
+    const board = document.getElementById("board");
+    if (!board) return;
+
+    // UX: Geef feedback dat we bezig zijn
+    Toast.show("Afbeelding genereren...", 'info', 2000);
+
+    try {
+        const canvas = await html2canvas(board, {
+            backgroundColor: "#121619", // Match var(--bg-color) uit theme.css
+            scale: 2.5, // Hoge resolutie (Retina quality)
+            logging: false,
+            ignoreElements: (el) => el.classList.contains('col-actions'), // Negeer zwevende knoppen
+            onclone: (doc) => {
+                // CSS aanpassingen voor de screenshot versie
+                doc.body.classList.add("exporting");
+                
+                // Zorg dat het bord volledig zichtbaar is
+                const v = doc.getElementById('viewport');
+                if (v) {
+                    v.style.overflow = 'visible';
+                    v.style.width = 'fit-content';
+                    v.style.height = 'auto';
+                    v.style.padding = '40px';
+                }
+            }
+        });
+
+        if (copyToClipboard) {
+            canvas.toBlob(blob => {
+                try {
+                    const item = new ClipboardItem({ "image/png": blob });
+                    navigator.clipboard.write([item]);
+                    Toast.show("Afbeelding gekopieerd naar klembord!", 'success');
+                } catch (err) {
+                    // Fallback voor browsers die dit blokkeren
+                    downloadCanvas(canvas);
+                    Toast.show("Klembord mislukt, afbeelding gedownload", 'info');
+                }
+            });
+        } else {
+            downloadCanvas(canvas);
+        }
+
+    } catch (err) {
+        console.error("Export failed:", err);
+        Toast.show("Screenshot mislukt", 'error');
+    }
+}
+
+// --- Private Utilities ---
+
+function downloadBlob(blob, filename) {
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); 
-    a.href = url; 
-    a.download = fileName; 
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 }
 
-/**
- * Exporteert alle data naar een CSV bestand geschikt voor Excel.
- */
-export function exportToCSV() {
-    const headers = [
-        "Sheet", "Kolom ID", "Input ID", "Output ID", 
-        "Rij Label", "Inhoud Sticky", "Type", "Status", 
-        "Waarde", "Systeem Score", "QA Data", "Root Causes", "Maatregelen"
-    ];
-
-    let csvContent = headers.join(";") + "\n";
-    
-    // Globale tellers (optioneel: resetten per sheet of doorlopend, hier doorlopend gekozen)
-    let globalIn = 0;
-    let globalOut = 0;
-
-    state.data.sheets.forEach(sheet => {
-        sheet.columns.forEach((col, colIdx) => {
-            // ID Logica
-            let inId = "", outId = "";
-            const hasInput = !!col.slots[2].text?.trim();
-            const hasOutput = !!col.slots[4].text?.trim();
-
-            if (hasInput) { globalIn++; inId = `IN${globalIn}`; }
-            if (hasOutput) { globalOut++; outId = `OUT${globalOut}`; }
-
-            col.slots.forEach((slot, slotIdx) => {
-                const rowLabels = ["Leverancier", "Systeem", "Input", "Proces", "Output", "Klant"];
-                
-                // Data formatting
-                const sysScore = (slotIdx === 1 && slot.systemData) ? slot.systemData.calculatedScore : "";
-                
-                // Flatten QA object
-                const qaStr = (slot.qa && (slotIdx === 2 || slotIdx === 4)) 
-                    ? Object.entries(slot.qa).map(([k, v]) => `${k}: ${v.result}`).join(" | ")
-                    : "";
-
-                const row = [
-                    sheet.name,
-                    colIdx + 1,
-                    (slotIdx === 2) ? inId : "",
-                    (slotIdx === 4) ? outId : "",
-                    rowLabels[slotIdx],
-                    slot.text,
-                    slot.type,
-                    slot.processStatus,
-                    slot.processValue,
-                    sysScore,
-                    qaStr,
-                    (slot.causes || []).join(" | "),
-                    (slot.improvements || []).join(" | ")
-                ];
-
-                // Map en escape alle velden
-                csvContent += row.map(toCsvField).join(";") + "\n";
-            });
-        });
-    });
-
-    // Add BOM for Excel UTF-8 compatibility
-    const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
+function downloadCanvas(canvas) {
     const a = document.createElement("a");
-    a.href = url;
-    a.download = getFileName('csv');
+    a.href = canvas.toDataURL("image/png");
+    a.download = getFileName('png');
     a.click();
-    URL.revokeObjectURL(url);
-}
-
-/**
- * Maakt een screenshot van het bord.
- * Gebruikt 'onclone' om UI elementen te verbergen zonder flikkering.
- */
-export async function exportHD() {
-    // Check global dependency
-    if (typeof html2canvas === 'undefined') {
-        alert("Fout: html2canvas library is niet geladen.");
-        return;
-    }
-
-    const boardElement = document.getElementById("board");
-    if (!boardElement) return;
-
-    try {
-        const canvas = await html2canvas(boardElement, {
-            backgroundColor: "#263238", // Match CSS background
-            scale: 2, // High DPI
-            logging: false,
-            // Dit is de magie: manipuleer de gekloonde DOM, niet de echte
-            onclone: (clonedDoc) => {
-                const clonedBody = clonedDoc.body;
-                clonedBody.classList.add("exporting"); // Activeer CSS die knoppen verbergt
-                
-                // Forceer volledige breedte indien nodig
-                const viewport = clonedDoc.querySelector('.viewport');
-                if (viewport) {
-                    viewport.style.overflow = 'visible';
-                    viewport.style.width = 'auto';
-                    viewport.style.height = 'auto';
-                }
-            }
-        });
-
-        const a = document.createElement("a");
-        a.href = canvas.toDataURL("image/png");
-        a.download = getFileName('png');
-        a.click();
-    } catch (err) {
-        console.error("Screenshot failed:", err);
-        alert("Kon geen screenshot maken. Zie console voor details.");
-    }
-}
-
-/**
- * Laadt projectdata in vanuit een JSON bestand.
- * @param {File} file 
- * @param {Function} onSuccessCallback - Wordt aangeroepen na succesvolle load
- */
-export function loadFromFile(file, onSuccessCallback) {
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-        try {
-            const rawData = ev.target.result;
-            const parsedData = JSON.parse(rawData);
-
-            // Basic Schema Validatie
-            if (!parsedData || !Array.isArray(parsedData.sheets)) {
-                throw new Error("Ongeldig bestandsformaat: Geen sheets gevonden.");
-            }
-
-            // Directe manipulatie van state instance (via property access)
-            state.project = parsedData;
-            
-            // Persist & Notify
-            state.saveToStorage();
-            
-            if (onSuccessCallback) onSuccessCallback();
-            
-        } catch (err) {
-            console.error("Load Error:", err);
-            alert("Fout bij laden bestand:\n" + err.message);
-        }
-    };
-    reader.readAsText(file);
 }

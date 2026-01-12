@@ -1,99 +1,92 @@
 import { state } from './state.js';
 import { IO_CRITERIA } from './config.js';
 
-// --- Helpers ---
-
-/**
- * Berekent de LSS score (0-100) op basis van QA resultaten.
- */
 function calculateLSSScore(qa) {
     if (!qa) return null;
     let totalW = 0, earnedW = 0;
-    
     IO_CRITERIA.forEach(c => {
-        const val = qa[c.key]?.result; // Veilig accessen via ?.result
+        const val = qa[c.key]?.result; 
         if (val === 'OK' || val === 'NOT_OK') {
             totalW += c.weight;
             if (val === 'OK') earnedW += c.weight;
         }
     });
-    
     return totalW === 0 ? null : Math.round((earnedW / totalW) * 100);
 }
 
-/**
- * Synchroniseert de hoogte van rijen (zodat alles netjes uitlijnt).
- */
 function syncRowHeights() {
     const rowHeaders = document.getElementById("row-headers").children;
-    
-    // Batch DOM reads
+    if (!rowHeaders.length) return;
     const heights = [];
     for (let r = 0; r < 6; r++) {
-        let max = 170; // Minimale hoogte
+        let max = 160;
         const slots = document.querySelectorAll(`.col .slots .slot:nth-child(${r + 1})`);
         slots.forEach(s => {
-            const h = s.firstElementChild.offsetHeight; // Meet sticky height
-            if (h > max) max = h;
+            if (s.firstElementChild) {
+                const h = s.firstElementChild.offsetHeight;
+                if (h > max) max = h;
+            }
         });
         heights.push(max);
     }
-
-    // Batch DOM writes
     requestAnimationFrame(() => {
         for (let r = 0; r < 6; r++) {
-            const h = `${heights[r]}px`;
-            // Zet hoogte op headers
-            if (rowHeaders[r]) rowHeaders[r].style.height = h;
-            // Zet hoogte op alle slots in die rij
-            document.querySelectorAll(`.col .slots .slot:nth-child(${r + 1})`).forEach(s => s.style.height = h);
+            const hStr = `${heights[r]}px`;
+            if (rowHeaders[r]) rowHeaders[r].style.height = hStr;
+            const slots = document.querySelectorAll(`.col .slots .slot:nth-child(${r + 1})`);
+            for (let i = 0; i < slots.length; i++) slots[i].style.height = hStr;
         }
-        
-        // Connectors centreren
-        const processRowHeight = heights[3];
-        // Dit is een benadering; CSS flexbox doet het meeste werk al verticaal
+        if (heights.length >= 3) {
+            const gapSize = 20; 
+            const processOffset = heights[0] + heights[1] + heights[2] + (3 * gapSize);
+            const connectors = document.querySelectorAll('.col-connector');
+            connectors.forEach(c => {
+                if (!c.classList.contains('parallel-connector')) {
+                    c.style.paddingTop = `${processOffset}px`;
+                }
+            });
+        }
     });
 }
 
-// --- Main Render Function ---
-
-/**
- * Render de volledige board UI.
- * @param {Function} openModalFn - Callback om modal te openen.
- */
 export function renderBoard(openModalFn) {
-    const activeSheet = state.activeSheet; // Gebruik getter uit state
+    const activeSheet = state.activeSheet;
     if (!activeSheet) return;
 
-    // 1. Update Sheet Selector
+    // Alleen renderen als de gebruiker niet actief typt
+    const focusedEl = document.activeElement;
+    if (focusedEl && (focusedEl.classList.contains('text') || focusedEl.classList.contains('connector-input-minimal'))) {
+        return; 
+    }
+
     const select = document.getElementById("sheetSelect");
-    // Alleen updaten als opties veranderd zijn om flikkeren te voorkomen? 
-    // Voor nu simpelweg rebuilden.
-    select.innerHTML = "";
-    state.project.sheets.forEach(s => {
-        const opt = document.createElement("option");
-        opt.value = s.id; 
-        opt.textContent = s.name;
-        opt.selected = (s.id === state.project.activeSheetId);
-        select.appendChild(opt);
-    });
+    if (select) {
+        select.innerHTML = "";
+        state.project.sheets.forEach(s => {
+            const opt = document.createElement("option");
+            opt.value = s.id; 
+            opt.textContent = s.name;
+            opt.selected = (s.id === state.project.activeSheetId);
+            select.appendChild(opt);
+        });
+    }
 
-    // 2. Update Headers
-    document.getElementById("board-header-display").textContent = activeSheet.name;
+    const headDisp = document.getElementById("board-header-display");
+    if(headDisp) headDisp.textContent = activeSheet.name;
+    
     const rowHeaderContainer = document.getElementById("row-headers");
-    rowHeaderContainer.innerHTML = "";
-    ["Leverancier", "Systeem", "Input", "Proces", "Output", "Klant"].forEach(l => {
-        const div = document.createElement("div");
-        div.className = "row-header";
-        div.innerHTML = `<span>${l}</span>`;
-        rowHeaderContainer.appendChild(div);
-    });
+    if (rowHeaderContainer.children.length === 0) {
+        ["Leverancier", "Systeem", "Input", "Proces", "Output", "Klant"].forEach(l => {
+            const div = document.createElement("div");
+            div.className = "row-header";
+            div.innerHTML = `<span>${l}</span>`;
+            rowHeaderContainer.appendChild(div);
+        });
+    }
 
-    // 3. Render Columns
     const colsContainer = document.getElementById("cols");
-    colsContainer.innerHTML = ""; // Clear current
+    colsContainer.innerHTML = ""; 
 
-    // Globale counters berekenen voor IN/OUT labels
     const offsets = state.getGlobalCountersBeforeActive();
     let localInCounter = 0;
     let localOutCounter = 0;
@@ -101,29 +94,22 @@ export function renderBoard(openModalFn) {
     const stats = { happy: 0, neutral: 0, sad: 0 };
 
     activeSheet.columns.forEach((col, colIdx) => {
-        if (col.isVisible === false) return; // Skip hidden columns
+        if (col.isVisible === false) return; 
 
-        // ID Logic
+        let myInputId = "";
         let myOutputId = "";
-        if (col.slots[2].text?.trim()) localInCounter++;
-        if (col.slots[4].text?.trim()) {
-            localOutCounter++;
-            myOutputId = `OUT${offsets.outStart + localOutCounter}`;
-        }
-        // Input ID tonen? (Optioneel, staat niet in je originele design maar wel handig)
-        // const myInputId = col.slots[2].text?.trim() ? `IN${offsets.inStart + localInCounter}` : "";
+        if (col.slots[2].text?.trim()) { localInCounter++; myInputId = `IN${offsets.inStart + localInCounter}`; }
+        if (col.slots[4].text?.trim()) { localOutCounter++; myOutputId = `OUT${offsets.outStart + localOutCounter}`; }
 
-        // --- Column Container ---
         const colEl = document.createElement("div");
         colEl.className = `col ${col.isParallel ? 'is-parallel' : ''}`;
         colEl.dataset.idx = colIdx;
 
-        // --- Action Toolbar ---
         const actionsEl = document.createElement("div");
         actionsEl.className = "col-actions";
         actionsEl.innerHTML = `
             <button class="btn-col-action btn-arrow" data-action="move" data-dir="-1">←</button>
-            <div class="btn-col-action btn-move-col" draggable="true">↔</div>
+            <div class="btn-col-action btn-move-col">↔</div>
             <button class="btn-col-action btn-arrow" data-action="move" data-dir="1">→</button>
             ${colIdx > 0 ? `<button class="btn-col-action btn-parallel ${col.isParallel ? 'active' : ''}" data-action="parallel">∥</button>` : ''}
             <button class="btn-col-action btn-hide-col" data-action="hide">👁️</button>
@@ -132,19 +118,16 @@ export function renderBoard(openModalFn) {
         `;
         colEl.appendChild(actionsEl);
 
-        // --- Slots Container ---
         const slotsEl = document.createElement("div");
         slotsEl.className = "slots";
 
         col.slots.forEach((s, slotIdx) => {
-            // Stats counting
             if (slotIdx === 3) {
                 if (s.processStatus === 'HAPPY') stats.happy++;
                 else if (s.processStatus === 'NEUTRAL') stats.neutral++;
                 else if (s.processStatus === 'SAD') stats.sad++;
             }
 
-            // Linked Text Logic (Input gekoppeld aan Output van andere stap)
             let displayText = s.text;
             let isLinked = false;
             if (slotIdx === 2 && s.linkedSourceId && allOutputMap[s.linkedSourceId]) {
@@ -152,7 +135,6 @@ export function renderBoard(openModalFn) {
                 isLinked = true;
             }
 
-            // Score Badge Logic
             const score = calculateLSSScore(s.qa);
             let scoreBadgeHTML = "";
             if (score !== null) {
@@ -165,59 +147,77 @@ export function renderBoard(openModalFn) {
                  scoreBadgeHTML += `<div class="qa-score-badge ${badgeClass}" style="bottom:22px">Sys: ${sysScore}%</div>`;
             }
 
-            // Status Class
             let statusClass = "";
-            if (slotIdx === 3) {
-                if (s.processStatus === 'HAPPY') statusClass = "status-happy";
-                if (s.processStatus === 'NEUTRAL') statusClass = "status-neutral";
-                if (s.processStatus === 'SAD') statusClass = "status-sad";
-            }
+            if (slotIdx === 3 && s.processStatus) { statusClass = `status-${s.processStatus.toLowerCase()}`; }
 
-            // Slot Element
+            let typeIcon = '📝';
+            if (s.type === 'Afspraak') typeIcon = '📅';
+            if (s.type === 'Besluit') typeIcon = '💎';
+            if (s.type === 'Wacht') typeIcon = '⏳';
+
             const slotDiv = document.createElement("div");
             slotDiv.className = "slot";
             
-            // Sticky Content Construction
-            // Note: We use innerHTML for structure but textContent for user data inside the editable div
             slotDiv.innerHTML = `
                 <div class="sticky ${statusClass}" data-col="${colIdx}" data-slot="${slotIdx}">
                     <div class="sticky-grip"></div>
-                    ${slotIdx === 3 ? `<div class="label-tl">${s.type === 'Afspraak' ? '📅' : '📝'} ${s.type}</div>` : ''}
-                    ${slotIdx === 3 ? `<div class="label-br">${s.processValue}</div>` : ''}
+                    ${(slotIdx === 3 && s.type) ? `<div class="label-tl">${typeIcon} ${s.type}</div>` : ''}
+                    ${(slotIdx === 3 && s.processValue) ? `<div class="label-br">${s.processValue}</div>` : ''}
+                    ${(slotIdx === 2 && myInputId) ? `<div class="id-tag">${myInputId}</div>` : ''}
                     ${(slotIdx === 4 && myOutputId) ? `<div class="id-tag">${myOutputId}</div>` : ''}
                     ${scoreBadgeHTML}
                     ${isLinked ? '<span class="link-icon" style="position:absolute; top:2px; right:4px;">🔗</span>' : ''}
                     <div class="sticky-content">
-                        <div class="text" contenteditable="true" spellcheck="false"></div>
+                        <div class="text" contenteditable="true" spellcheck="false" ${isLinked ? 'data-linked="true"' : ''}></div>
                     </div>
                 </div>
             `;
             
-            // Safely set text content
-            slotDiv.querySelector(".text").textContent = displayText;
-
-            // Events
+            const textEl = slotDiv.querySelector(".text");
+            textEl.textContent = displayText;
             const stickyEl = slotDiv.querySelector(".sticky");
-            
-            // Double click -> Modal
-            stickyEl.addEventListener('dblclick', (e) => {
-                // Alleen specifieke rijen openen modal
-                if ([1, 2, 3, 4].includes(slotIdx)) {
-                    e.stopPropagation();
-                    openModalFn(colIdx, slotIdx);
+
+            // --- DE DEFINITIEVE CLICK & DUBBELKLIK FIX ---
+            let lastClickTime = 0;
+
+            stickyEl.addEventListener('click', (e) => {
+                const currentTime = new Date().getTime();
+                const timeDiff = currentTime - lastClickTime;
+
+                if (timeDiff < 300 && timeDiff > 0) {
+                    // DUBBELKLIK GEREGISTREERD
+                    lastClickTime = 0; // Reset
+                    if ([1, 2, 3].includes(slotIdx)) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        openModalFn(colIdx, slotIdx);
+                    }
+                } else {
+                    // ENKELE KLIK ACTIE: Focus op tekst
+                    lastClickTime = currentTime;
+                    
+                    // We wachten heel even om te zien of er een tweede klik komt
+                    setTimeout(() => {
+                        if (lastClickTime === currentTime) {
+                            textEl.focus();
+                            // Cursor naar het einde zetten
+                            const range = document.createRange();
+                            const sel = window.getSelection();
+                            range.selectNodeContents(textEl);
+                            range.collapse(false);
+                            sel.removeAllRanges();
+                            sel.addRange(range);
+                        }
+                    }, 300);
                 }
             });
 
-            // Input -> State Update (Debounce zou hier goed zijn voor performance, maar direct is responsiever)
-            const textEl = slotDiv.querySelector(".text");
             textEl.addEventListener('input', () => {
-                // Als gelinkt, ontkoppel
-                if (isLinked) {
-                    state.updateStickyText(colIdx, slotIdx, textEl.textContent); 
-                    // Je zou hier s.linkedSourceId = null moeten zetten in state updateStickyText
-                } else {
-                    state.updateStickyText(colIdx, slotIdx, textEl.textContent);
-                }
+                state.updateStickyText(colIdx, slotIdx, textEl.textContent);
+            });
+
+            textEl.addEventListener('blur', () => {
+                state.saveToStorage(); 
             });
 
             slotsEl.appendChild(slotDiv);
@@ -226,44 +226,31 @@ export function renderBoard(openModalFn) {
         colEl.appendChild(slotsEl);
         colsContainer.appendChild(colEl);
 
-        // --- Connector Logic ---
+        // Connectors logic (onveranderd)
         if (colIdx < activeSheet.columns.length - 1) {
-             // Zoek volgende zichtbare kolom
              let nextVisible = null;
              for(let i = colIdx + 1; i < activeSheet.columns.length; i++){
                  if(activeSheet.columns[i].isVisible !== false){ nextVisible = activeSheet.columns[i]; break; }
              }
-
              if(nextVisible) {
                  const connEl = document.createElement("div");
-                 
                  if(nextVisible.isParallel) {
                      connEl.className = "col-connector parallel-connector";
                      connEl.innerHTML = `<div class="parallel-line"></div><div class="parallel-badge">||</div>`;
                  } else {
                      connEl.className = "col-connector";
                      if(col.hasTransition) {
-                         connEl.innerHTML = `
-                            <div class="connector-active">
-                                <input class="connector-input-minimal" placeholder="Tijd..." value="">
-                                <div class="connector-arrow-minimal"></div>
-                                <span class="connector-text-export"></span>
-                                <button class="connector-delete">×</button>
-                            </div>`;
-                         
-                         // Safe value setting & binding
+                         connEl.innerHTML = `<div class="connector-active"><input class="connector-input-minimal" placeholder="Tijd..."><div class="connector-arrow-minimal"></div><span class="connector-text-export"></span><button class="connector-delete">×</button></div>`;
                          const inp = connEl.querySelector("input");
                          inp.value = col.transitionNext || "";
-                         inp.oninput = (e) => state.setTransition(colIdx, e.target.value);
-                         
-                         connEl.querySelector(".connector-text-export").textContent = col.transitionNext;
-                         connEl.querySelector(".connector-delete").onclick = () => state.setTransition(colIdx, null);
-
+                         inp.oninput = (e) => { state.setTransition(colIdx, e.target.value); connEl.querySelector(".connector-text-export").textContent = e.target.value; };
+                         inp.onblur = () => state.saveToStorage();
+                         connEl.querySelector(".connector-delete").onclick = () => { state.setTransition(colIdx, null); state.saveToStorage(); };
                      } else {
                          const btn = document.createElement("button");
                          btn.className = "connector-add";
                          btn.textContent = "+";
-                         btn.onclick = () => state.setTransition(colIdx, "");
+                         btn.onclick = () => { state.setTransition(colIdx, ""); state.saveToStorage(); };
                          connEl.appendChild(btn);
                      }
                  }
@@ -272,46 +259,29 @@ export function renderBoard(openModalFn) {
         }
     });
 
-    // 4. Update Stats in UI
     document.getElementById("countHappy").textContent = stats.happy;
     document.getElementById("countNeutral").textContent = stats.neutral;
     document.getElementById("countSad").textContent = stats.sad;
-
-    // 5. Sync Heights
-    // Timeout om rendering browser kans te geven
     setTimeout(syncRowHeights, 0);
 }
 
-// --- Event Delegation Setup (Call this once in main.js) ---
-
 export function setupDelegatedEvents() {
     const colsContainer = document.getElementById("cols");
-
     colsContainer.addEventListener('click', (e) => {
         const btn = e.target.closest('.btn-col-action');
         if (!btn) return;
-
         const colEl = btn.closest('.col');
         if (!colEl) return;
-        
         const idx = parseInt(colEl.dataset.idx);
         const action = btn.dataset.action;
-
         switch(action) {
-            case 'move':
-                state.moveColumn(idx, parseInt(btn.dataset.dir));
-                break;
-            case 'delete':
-                if (confirm("Kolom verwijderen?")) state.deleteColumn(idx);
-                break;
-            case 'add':
-                state.addColumn(idx); // Add AFTER this index
-                break;
-            case 'hide':
-                state.setColVisibility(idx, false);
-                break;
-            case 'parallel':
-                state.toggleParallel(idx);
+            case 'move': state.moveColumn(idx, parseInt(btn.dataset.dir)); break;
+            case 'delete': if (confirm("Kolom verwijderen?")) state.deleteColumn(idx); break;
+            case 'add': state.addColumn(idx); break;
+            case 'hide': state.setColVisibility(idx, false); break;
+            case 'parallel': 
+                if (state.toggleParallel) state.toggleParallel(idx); 
+                else { const col = state.activeSheet.columns[idx]; col.isParallel = !col.isParallel; state.saveToStorage(); }
                 break;
         }
     });
