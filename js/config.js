@@ -1,8 +1,9 @@
 export const STORAGE_KEY = "pro_lss_sipoc_v2_ultimate";
 
 const deepFreeze = (obj) => {
-    Object.keys(obj).forEach(prop => {
-        if (typeof obj[prop] === 'object' && obj[prop] !== null) deepFreeze(obj[prop]);
+    Object.keys(obj).forEach((prop) => {
+        const val = obj[prop];
+        if (typeof val === "object" && val !== null) deepFreeze(val);
     });
     return Object.freeze(obj);
 };
@@ -17,19 +18,18 @@ export const APP_CONFIG = deepFreeze({
 export const DEFAULTS = deepFreeze({
     PROJECT_TITLE: "Nieuw Proces Project",
     SHEET_NAME: "Proces Flow 1",
-    // HIER: Alles op null zetten
-    STICKY_TYPE: null,      
-    PROCESS_VALUE: null,    
-    PROCESS_STATUS: null,   
+    STICKY_TYPE: null,
+    PROCESS_VALUE: null,
+    PROCESS_STATUS: null,
     AUTHOR: "Anoniem"
 });
 
 export const SYSTEM_QUESTIONS = deepFreeze([
-    { id: 'workarounds', label: "1. Hoe vaak dwingt het systeem je tot workarounds?", options: ["(Bijna) nooit", "Soms", "Vaak", "(Bijna) altijd"] },
-    { id: 'performance', label: "2. Hoe vaak remt het systeem je af?", options: ["(Bijna) nooit", "Soms", "Vaak", "(Bijna) altijd"] },
-    { id: 'double', label: "3. Hoe vaak moet je gegevens dubbel registreren?", options: ["(Bijna) nooit", "Soms", "Vaak", "(Bijna) altijd"] },
-    { id: 'error', label: "4. Hoe vaak laat het systeem ruimte voor fouten?", options: ["(Bijna) nooit", "Soms", "Vaak", "(Bijna) altijd"] },
-    { id: 'depend', label: "5. Wat is de impact bij systeemuitval?", options: ["Veilig (Fallback)", "Vertraging", "Groot Risico", "Volledige Stilstand"] }
+    { id: "workarounds", label: "1. Hoe vaak dwingt het systeem je tot workarounds?", options: ["(Bijna) nooit", "Soms", "Vaak", "(Bijna) altijd"] },
+    { id: "performance", label: "2. Hoe vaak remt het systeem je af?", options: ["(Bijna) nooit", "Soms", "Vaak", "(Bijna) altijd"] },
+    { id: "double", label: "3. Hoe vaak moet je gegevens dubbel registreren?", options: ["(Bijna) nooit", "Soms", "Vaak", "(Bijna) altijd"] },
+    { id: "error", label: "4. Hoe vaak laat het systeem ruimte voor fouten?", options: ["(Bijna) nooit", "Soms", "Vaak", "(Bijna) altijd"] },
+    { id: "depend", label: "5. Wat is de impact bij systeemuitval?", options: ["Veilig (Fallback)", "Vertraging", "Groot Risico", "Volledige Stilstand"] }
 ]);
 
 export const IO_CRITERIA = deepFreeze([
@@ -42,63 +42,68 @@ export const IO_CRITERIA = deepFreeze([
 ]);
 
 export const ACTIVITY_TYPES = deepFreeze([
-    { value: 'Taak', label: '📝 Taak' },
-    { value: 'Afspraak', label: '📅 Afspraak' },
-    { value: 'Besluit', label: '💎 Besluit' },
-    { value: 'Wacht', label: '⏳ Wachttijd' }
+    { value: "Taak", label: "📝 Taak" },
+    { value: "Afspraak", label: "📅 Afspraak" },
+    { value: "Besluit", label: "💎 Besluit" },
+    { value: "Wacht", label: "⏳ Wachttijd" }
 ]);
 
 export const LEAN_VALUES = deepFreeze([
-    { value: 'VA', label: 'VA - Klantwaarde' },
-    { value: 'BNVA', label: 'BNVA - Business Noodzaak' },
-    { value: 'NVA', label: 'NVA - Verspilling' }
+    { value: "VA", label: "VA - Klantwaarde" },
+    { value: "BNVA", label: "BNVA - Business Noodzaak" },
+    { value: "NVA", label: "NVA - Verspilling" }
 ]);
 
 export const PROCESS_STATUSES = deepFreeze([
-    { value: 'SAD', label: 'Niet in control', emoji: '☹️', class: 'selected-sad' },
-    { value: 'NEUTRAL', label: 'Kwetsbaar', emoji: '😐', class: 'selected-neu' },
-    { value: 'HAPPY', label: 'In control', emoji: '🙂', class: 'selected-hap' }
+    { value: "SAD", label: "Niet in control", emoji: "☹️", class: "selected-sad" },
+    { value: "NEUTRAL", label: "Kwetsbaar", emoji: "😐", class: "selected-neu" },
+    { value: "HAPPY", label: "In control", emoji: "🙂", class: "selected-hap" }
 ]);
 
-export const DISRUPTION_FREQUENCIES = deepFreeze(['Zelden', 'Soms', 'Vaak', 'Altijd']);
+export const DISRUPTION_FREQUENCIES = deepFreeze(["Zelden", "Soms", "Vaak", "Altijd"]);
 
 export const DEFINITION_TYPES = deepFreeze([
-    { value: 'HARD', label: 'Hard' },
-    { value: 'SOFT', label: 'Soft' }
+    { value: "HARD", label: "Hard" },
+    { value: "SOFT", label: "Soft" }
 ]);
 
 export const uid = () => {
-    if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+    if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
     return Date.now().toString(36) + Math.random().toString(36).substring(2);
 };
 
-export const createSticky = () => {
-    const initialQA = {};
-    IO_CRITERIA.forEach(c => initialQA[c.key] = { result: "", note: "" });
-
-    const initialSysData = { calculatedScore: null };
-    SYSTEM_QUESTIONS.forEach(q => initialSysData[q.id] = 0);
-
-    return {
-        id: uid(),
-        created: Date.now(),
-        text: "",
-        linkedSourceId: null,
-        
-        // DEZE MOETEN NULL ZIJN
-        type: null,
-        processValue: null,
-        processStatus: null,
-        
-        successFactors: "",
-        causes: [],         
-        improvements: [],   
-        qa: initialQA,
-        systemData: initialSysData,
-        inputDefinitions: [],
-        disruptions: []
-    };
+const createInitialQA = () => {
+    const qa = {};
+    IO_CRITERIA.forEach((c) => {
+        qa[c.key] = { result: "", note: "" };
+    });
+    return qa;
 };
+
+const createInitialSystemData = () => {
+    const sys = { calculatedScore: null };
+    SYSTEM_QUESTIONS.forEach((q) => {
+        sys[q.id] = 0;
+    });
+    return sys;
+};
+
+export const createSticky = () => ({
+    id: uid(),
+    created: Date.now(),
+    text: "",
+    linkedSourceId: null,
+    type: null,
+    processValue: null,
+    processStatus: null,
+    successFactors: "",
+    causes: [],
+    improvements: [],
+    qa: createInitialQA(),
+    systemData: createInitialSystemData(),
+    inputDefinitions: [],
+    disruptions: []
+});
 
 export const createColumn = () => ({
     id: uid(),
@@ -112,7 +117,7 @@ export const createColumn = () => ({
 
 export const createSheet = (name = DEFAULTS.SHEET_NAME) => ({
     id: uid(),
-    name: name,
+    name,
     columns: [createColumn()]
 });
 

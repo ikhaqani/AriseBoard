@@ -218,9 +218,9 @@
     pointer-events: none; 
     transform: translateY(8px);
     transition: 
-        opacity 0.3s ease 2s, 
-        transform 0.3s ease 2s, 
-        pointer-events 0s 2s;
+        opacity 0.3s ease 0.5s, 
+        transform 0.3s ease 0.5s, 
+        pointer-events 0s 0.5s;
 }
 
 .col:hover .col-actions,
