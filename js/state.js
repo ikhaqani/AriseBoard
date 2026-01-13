@@ -158,11 +158,19 @@ class StateManager {
           return {
             ...clean,
             ...s,
+
+            // Keep nested objects merged
             qa: { ...clean.qa, ...(s.qa || {}) },
             systemData: { ...clean.systemData, ...(s.systemData || {}) },
+
+            // Keep existing fields
             linkedSourceId: s.linkedSourceId ?? clean.linkedSourceId,
             inputDefinitions: Array.isArray(s.inputDefinitions) ? s.inputDefinitions : clean.inputDefinitions,
-            disruptions: Array.isArray(s.disruptions) ? s.disruptions : clean.disruptions
+            disruptions: Array.isArray(s.disruptions) ? s.disruptions : clean.disruptions,
+
+            // NEW: Werkbeleving / werkplezier velden
+            workExp: s.workExp ?? clean.workExp,
+            workExpNote: s.workExpNote ?? clean.workExpNote
           };
         });
       });

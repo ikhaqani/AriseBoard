@@ -672,7 +672,8 @@
 .label-tr,
 .label-br,
 .id-tag,
-.qa-score-badge {
+.qa-score-badge,
+.workjoy-badge {
     position: absolute;
     pointer-events: none;
     z-index: 2;
@@ -727,6 +728,49 @@
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
+/* =========================================================
+   Werkplezier (Energiemeter) badge on sticky notes
+   Values: OBSTACLE | ROUTINE | FLOW
+   ========================================================= */
+.workjoy-badge {
+    top: 2px;
+    right: 4px;
+    font-size: 10px;
+    font-weight: 900;
+    padding: 2px 6px;
+    border-radius: 10px;
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    backdrop-filter: blur(6px);
+    line-height: 1;
+    opacity: 0.95;
+}
+
+/* If you already show a process emoji in .label-tr, this variant avoids overlap */
+.workjoy-badge.offset {
+    top: 20px;
+}
+
+.workjoy-obstacle {
+    background: rgba(213, 0, 0, 0.92);
+}
+
+.workjoy-routine {
+    background: rgba(120, 144, 156, 0.92);
+}
+
+.workjoy-flow {
+    background: rgba(0, 200, 83, 0.92);
+}
+
+/* Slightly softer on happy/neutral/sad stickies (keeps contrast) */
+.sticky.status-happy .workjoy-badge,
+.sticky.status-neutral .workjoy-badge,
+.sticky.status-sad .workjoy-badge {
+    border-color: rgba(255, 255, 255, 0.28);
+}
+
 .score-high {
     background: var(--ui-success);
 }
@@ -743,6 +787,7 @@
     font-size: 12px;
     opacity: 0.8;
     filter: drop-shadow(0 1px 0 rgba(255, 255, 255, 0.5));
+    pointer-events: none;
 }
 
 .col-connector {

@@ -32,6 +32,63 @@ function getProcessEmoji(status) {
   return s?.emoji || '';
 }
 
+/* =========================================================
+   Werkbeleving / werkplezier (Optie A)
+   Slot: alleen Proces (slotIdx === 3)
+   ========================================================= */
+
+function escapeAttr(v) {
+  return String(v ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function getWorkExpMeta(workExp) {
+  const v = String(workExp || '').toUpperCase();
+
+  // Verwachte waarden: 'OBSTACLE' | 'ROUTINE' | 'FLOW'
+  if (v === 'OBSTACLE') {
+    return {
+      icon: '🛠️',
+      short: 'Obstakel',
+      context: 'Kost energie & frustreert. Het proces werkt tegen me. (Actie: Verbeteren)'
+    };
+  }
+  if (v === 'ROUTINE') {
+    return {
+      icon: '🤖',
+      short: 'Routine',
+      context: 'Saai & Repeterend. Ik voeg hier geen unieke waarde toe. (Actie: Automatiseren)'
+    };
+  }
+  if (v === 'FLOW') {
+    return {
+      icon: '🚀',
+      short: 'Flow',
+      context: 'Geeft energie & voldoening. Hier maak ik het verschil. (Actie: Koesteren)'
+    };
+  }
+  return null;
+}
+
+function buildWorkExpBadge(slot) {
+  const meta = getWorkExpMeta(slot?.workExp);
+  if (!meta) return '';
+
+  const note = String(slot?.workExpNote || '').trim();
+  const title = note ? `${meta.context}\n\nNotitie: ${note}` : meta.context;
+
+  // Positionering via CSS: .workexp-badge { position:absolute; top:2px; right:26px; ... }
+  // (right:26px zodat het niet botst met 🔗 op input)
+  return `
+    <div class="workexp-badge" title="${escapeAttr(title)}" aria-label="${escapeAttr(meta.short)}">
+      <span class="workexp-icn">${meta.icon}</span>
+    </div>
+  `;
+}
+
 function scheduleSyncRowHeights() {
   if (_syncRaf) cancelAnimationFrame(_syncRaf);
   _syncRaf = requestAnimationFrame(() => {
@@ -133,7 +190,7 @@ function attachStickyInteractions({ stickyEl, textEl, colIdx, slotIdx, openModal
 
     if (
       e.target.closest(
-        ".sticky-grip, .qa-score-badge, .id-tag, .label-tl, .label-tr, .label-br, .link-icon, .btn-col-action, .col-actions, .connector-add, .connector-delete, .connector-input-minimal"
+        ".sticky-grip, .qa-score-badge, .id-tag, .label-tl, .label-tr, .label-br, .link-icon, .workexp-badge, .btn-col-action, .col-actions, .connector-add, .connector-delete, .connector-input-minimal"
       )
     ) {
       return;
@@ -187,6 +244,9 @@ function buildSlotHTML({
 }) {
   const procEmoji = (slotIdx === 3 && slot.processStatus) ? getProcessEmoji(slot.processStatus) : "";
 
+  // NEW: alleen op Proces (slotIdx === 3)
+  const workExpHTML = (slotIdx === 3) ? buildWorkExpBadge(slot) : "";
+
   return `
     <div class="sticky ${statusClass}" data-col="${colIdx}" data-slot="${slotIdx}">
       <div class="sticky-grip"></div>
@@ -199,6 +259,8 @@ function buildSlotHTML({
       ${(slotIdx === 4 && myOutputId) ? `<div class="id-tag">${myOutputId}</div>` : ''}
 
       ${scoreBadgeHTML}
+
+      ${workExpHTML}
 
       ${isLinked ? '<span class="link-icon" style="position:absolute; top:2px; right:4px;">🔗</span>' : ''}
 
@@ -384,9 +446,13 @@ function renderColumnsOnly(openModalFn) {
       attachStickyInteractions({ stickyEl, textEl, colIdx, slotIdx, openModalFn });
 
       if (!isLinked && textEl) {
-        textEl.addEventListener("input", () => {
-          state.updateStickyText(colIdx, slotIdx, textEl.textContent);
-        }, { passive: true });
+        textEl.addEventListener(
+          "input",
+          () => {
+            state.updateStickyText(colIdx, slotIdx, textEl.textContent);
+          },
+          { passive: true }
+        );
       }
 
       slotsEl.appendChild(slotDiv);
@@ -444,6 +510,7 @@ export function applyStateUpdate(meta, openModalFn) {
   }
 
   if (reason === 'title') return;
+
   if (reason === 'sheet' || reason === 'sheets') {
     const activeSheet = state.activeSheet;
     if (activeSheet) {

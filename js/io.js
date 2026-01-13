@@ -85,6 +85,34 @@ const formatDisruptions = (disruptions) => {
     .join(' | ');
 };
 
+/**
+ * Werkplezier / "Energiemeter" (Option A)
+ * 🛠️ Obstakel  -> kost energie / frustreert (Actie: verbeteren)
+ * 🤖 Routine   -> saai / repeterend     (Actie: automatiseren)
+ * 🚀 Flow      -> geeft energie         (Actie: koesteren)
+ */
+const WORKJOY_OPTIONS = [
+  { value: 'OBSTACLE', icon: '🛠️', label: 'Obstakel', context: 'Kost energie & frustreert. Het proces werkt tegen me. (Actie: Verbeteren)' },
+  { value: 'ROUTINE',  icon: '🤖', label: 'Routine',  context: 'Saai & repeterend. Ik voeg hier geen unieke waarde toe. (Actie: Automatiseren)' },
+  { value: 'FLOW',     icon: '🚀', label: 'Flow',     context: 'Geeft energie & voldoening. Hier maak ik het verschil. (Actie: Koesteren)' }
+];
+
+const getWorkjoyLabel = (v) => WORKJOY_OPTIONS.find((x) => x.value === v)?.label || '';
+const getWorkjoyIcon = (v) => WORKJOY_OPTIONS.find((x) => x.value === v)?.icon || '';
+const getWorkjoyContext = (v) => WORKJOY_OPTIONS.find((x) => x.value === v)?.context || '';
+
+const formatWorkjoy = (slot) => {
+  // verwacht dat je dit opslaat in slot.workjoy (of slot.workJoy) vanuit de UI
+  const v = slot?.workjoy ?? slot?.workJoy ?? null;
+  if (!v) return { value: '', label: '', icon: '', context: '' };
+  return {
+    value: String(v),
+    label: getWorkjoyLabel(String(v)),
+    icon: getWorkjoyIcon(String(v)),
+    context: getWorkjoyContext(String(v))
+  };
+};
+
 // Pre-pass: bouw stabiele OUTn mapping (slot.id -> OUTn) + OUTn -> tekst
 function buildOutputMaps(project) {
   const outIdBySlotId = {};
@@ -159,7 +187,6 @@ export function loadFromFile(file, onSuccess) {
 
 export function exportToCSV() {
   try {
-    // ✅ Emoji kolom verwijderd
     const headers = [
       'Kolom Nr',
       'SIPOC Categorie',
@@ -176,6 +203,13 @@ export function exportToCSV() {
       'Maatregelen (CM)',
       'Verstoringen',
       'Input Specificaties',
+
+      // ✅ nieuw: werkplezier
+      'Werkplezier (waarde)',
+      'Werkplezier (label)',
+      'Werkplezier (icoon)',
+      'Werkplezier (context)',
+
       'Parallel'
     ];
 
@@ -206,7 +240,7 @@ export function exportToCSV() {
         const hasInputText = !!slotInput?.text?.trim();
 
         if (hasLinked) {
-          inputId = slotInput.linkedSourceId; // ✅ input ID = output ID
+          inputId = slotInput.linkedSourceId;
         } else if (hasInputText) {
           globalIn += 1;
           inputId = `IN${globalIn}`;
@@ -220,13 +254,13 @@ export function exportToCSV() {
           const isIoRow = slotIdx === 2 || slotIdx === 4;
 
           // Inhoud:
-          // - Als Input gelinkt is aan Output: toon output-tekst in de Input rij (zoals op post-it bedoeld)
+          // - Als Input gelinkt is aan Output: toon output-tekst in de Input rij
           // - Anders: normale slot.text
           let inhoud = slot?.text ?? '';
           if (slotIdx === 2 && slotInput?.linkedSourceId) {
             const linkedId = slotInput.linkedSourceId;
             if (outTextByOutId[linkedId]) {
-              inhoud = outTextByOutId[linkedId]; // ✅ inhoud = output-tekst
+              inhoud = outTextByOutId[linkedId];
             }
           }
 
@@ -244,6 +278,9 @@ export function exportToCSV() {
 
           const inputSpecs = isIoRow ? formatInputSpecs(slot?.inputDefinitions) : '';
 
+          // ✅ werkplezier (meestal logisch op Proces-rij, maar je kunt het overal exporteren)
+          const wj = formatWorkjoy(slot);
+
           const row = [
             visibleColNr,
             category,
@@ -260,6 +297,13 @@ export function exportToCSV() {
             maatregelen,
             verstoringen,
             inputSpecs,
+
+            // ✅ nieuw
+            wj.value,
+            wj.label,
+            wj.icon,
+            wj.context,
+
             yesNo(!!col.isParallel)
           ];
 

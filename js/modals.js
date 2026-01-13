@@ -33,6 +33,36 @@ const PROCESS_STATUS_DEFS = {
   }
 };
 
+// =========================================================
+// Werkbeleving / Werkplezier (Obstakel / Routine / Flow)
+// =========================================================
+const WORK_EXP_OPTIONS = [
+  {
+    value: 'OBSTACLE',
+    icon: '🛠️',
+    label: 'Obstakel',
+    title: 'Obstakel',
+    body: 'Kost energie & frustreert. Het proces werkt tegen me. (Actie: Verbeteren)',
+    cls: 'selected-sad'
+  },
+  {
+    value: 'ROUTINE',
+    icon: '🤖',
+    label: 'Routine',
+    title: 'Routine',
+    body: 'Saai & repeterend. Ik voeg hier geen unieke waarde toe. (Actie: Automatiseren)',
+    cls: 'selected-neu'
+  },
+  {
+    value: 'FLOW',
+    icon: '🚀',
+    label: 'Flow',
+    title: 'Flow',
+    body: 'Geeft energie & voldoening. Hier maak ik het verschil. (Actie: Koesteren)',
+    cls: 'selected-hap'
+  }
+];
+
 const escapeAttr = (v) =>
   String(v ?? '')
     .replace(/&/g, '&amp;')
@@ -132,6 +162,23 @@ const renderProcessTab = (data) => {
     `;
   }).join('');
 
+  // NEW: Werkbeleving UI
+  const workExp = data.workExp || null;
+
+  const workExpHtml = WORK_EXP_OPTIONS.map((o) => `
+      <div class="status-option ${workExp === o.value ? o.cls : ''}"
+           data-action="set-workexp"
+           data-val="${escapeAttr(o.value)}"
+           data-tt-title="${escapeAttr(o.title)}"
+           data-tt-body="${escapeAttr(o.body)}"
+           tabindex="0"
+           role="button"
+           aria-label="${escapeAttr(o.title)}">
+        <span class="status-emoji">${escapeAttr(o.icon)}</span>
+        <span class="status-text">${escapeAttr(o.label)}</span>
+      </div>
+  `).join('');
+
   const disruptions =
     data.disruptions && data.disruptions.length > 0
       ? data.disruptions
@@ -154,6 +201,14 @@ const renderProcessTab = (data) => {
     <div class="modal-label">Proces Status ${!status ? '<span style="color:#ff5252">*</span>' : ''}</div>
     <div class="status-selector">${statusHtml}</div>
     <input type="hidden" id="processStatus" value="${escapeAttr(status || '')}">
+
+    <div class="modal-label" style="margin-top:16px;">Werkbeleving (Werkplezier)</div>
+    <div class="io-helper" style="margin-top:0; margin-bottom:12px; font-size:13px;">
+      Kies wat dit met je doet (en de bijbehorende actie-richting).
+    </div>
+    <div class="status-selector">${workExpHtml}</div>
+    <input type="hidden" id="workExp" value="${escapeAttr(workExp || '')}">
+    <textarea id="workExpNote" class="modal-input" placeholder="Korte context (optioneel): wat maakt dit een obstakel/routine/flow?">${escapeAttr(data.workExpNote || '')}</textarea>
 
     <div class="metrics-grid" style="margin-top: 24px;">
       <div>
@@ -493,8 +548,9 @@ const setupPermanentListeners = () => {
     }
   });
 
+  // Proces status select (bestaand)
   content.addEventListener("click", (e) => {
-    const statusOpt = e.target.closest(".status-option");
+    const statusOpt = e.target.closest('.status-option[data-action="set-status"]');
     if (!statusOpt) return;
 
     const val = statusOpt.dataset.val;
@@ -505,7 +561,9 @@ const setupPermanentListeners = () => {
     const wasActive = statusOpt.classList.contains(configStatus.class);
 
     PROCESS_STATUSES.forEach((s) => {
-      content.querySelectorAll(`.status-option.${s.class}`).forEach((el) => el.classList.remove(s.class));
+      content
+        .querySelectorAll(`.status-option.${s.class}[data-action="set-status"]`)
+        .forEach((el) => el.classList.remove(s.class));
     });
 
     const happySection = $("sectionHappy");
@@ -522,9 +580,37 @@ const setupPermanentListeners = () => {
     input.value = val;
     statusOpt.classList.add(configStatus.class);
 
-    const isHappy = val === "HAPPY";
-    if (happySection) happySection.style.display = isHappy ? "block" : "none";
-    if (badSection) badSection.style.display = !isHappy ? "block" : "none";
+    const isHappyLocal = val === "HAPPY";
+    if (happySection) happySection.style.display = isHappyLocal ? "block" : "none";
+    if (badSection) badSection.style.display = !isHappyLocal ? "block" : "none";
+  });
+
+  // NEW: Werkbeleving select (Obstakel / Routine / Flow)
+  content.addEventListener("click", (e) => {
+    const opt = e.target.closest('.status-option[data-action="set-workexp"]');
+    if (!opt) return;
+
+    const input = $("workExp");
+    if (!input) return;
+
+    const val = opt.dataset.val;
+    const wasActive = (input.value || "") === val;
+
+    // clear all highlights
+    content
+      .querySelectorAll('.status-option[data-action="set-workexp"]')
+      .forEach((el) => el.classList.remove("selected-hap", "selected-neu", "selected-sad"));
+
+    if (wasActive) {
+      input.value = "";
+      hideTooltip();
+      return;
+    }
+
+    input.value = val;
+
+    const found = WORK_EXP_OPTIONS.find((o) => o.value === val);
+    if (found?.cls) opt.classList.add(found.cls);
   });
 
   content.addEventListener("click", (e) => {
@@ -624,6 +710,13 @@ export function saveModalDetails(closeModal = true) {
   if (slotIdx === 3) {
     const statusVal = $("processStatus")?.value ?? "";
     data.processStatus = statusVal === "" ? null : statusVal;
+
+    // NEW: werkbeleving opslaan
+    const expVal = $("workExp")?.value ?? "";
+    data.workExp = expVal === "" ? null : expVal;
+
+    const expNote = $("workExpNote");
+    data.workExpNote = expNote ? expNote.value : "";
 
     const typeVal = content.querySelector('input[name="metaType"]')?.value ?? "";
     data.type = typeVal === "" ? null : typeVal;
