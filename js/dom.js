@@ -1,11 +1,3 @@
-// ===============================
-// File: js/dom.js  (VOLLEDIG AANGEPAST)
-// Fixes:
-// 1) Smiley (processStatus emoji) rechtsboven in proces-sticky (label-tr)
-// 2) Input "Output als Input" toont altijd ID (linkedSourceId) óók als input.text leeg is
-// 3) Linked input is read-only in board (voorkomt dat input-event je link overschrijft)
-// ===============================
-
 import { state } from './state.js';
 import { IO_CRITERIA, PROCESS_STATUSES } from './config.js';
 
@@ -132,7 +124,7 @@ function attachStickyInteractions({ stickyEl, textEl, colIdx, slotIdx, openModal
 
     if (
       e.target.closest(
-        ".sticky-grip, .qa-score-badge, .id-tag, .label-tl, .label-tr, .label-br, .link-icon"
+        ".sticky-grip, .qa-score-badge, .id-tag, .label-tl, .label-tr, .label-br, .link-icon, .btn-col-action, .col-actions"
       )
     ) {
       return;
@@ -296,7 +288,6 @@ export function renderBoard(openModalFn) {
     let myInputId = "";
     let myOutputId = "";
 
-    // ✅ Input ID: als linkedSourceId bestaat, toon die altijd (ook als input.text leeg is)
     if (col.slots[2].linkedSourceId && allOutputMap[col.slots[2].linkedSourceId]) {
       myInputId = col.slots[2].linkedSourceId;
     } else if (col.slots[2].text?.trim()) {
@@ -304,7 +295,6 @@ export function renderBoard(openModalFn) {
       myInputId = `IN${offsets.inStart + localInCounter}`;
     }
 
-    // Output ID: zoals voorheen
     if (col.slots[4].text?.trim()) {
       localOutCounter++;
       myOutputId = `OUT${offsets.outStart + localOutCounter}`;
@@ -340,7 +330,6 @@ export function renderBoard(openModalFn) {
       let displayText = slot.text;
       let isLinked = false;
 
-      // ✅ Linked input: toon output-tekst en maak read-only
       if (slotIdx === 2 && slot.linkedSourceId && allOutputMap[slot.linkedSourceId]) {
         displayText = allOutputMap[slot.linkedSourceId];
         isLinked = true;
@@ -379,7 +368,6 @@ export function renderBoard(openModalFn) {
 
       attachStickyInteractions({ stickyEl, textEl, colIdx, slotIdx, openModalFn });
 
-      // ✅ Voorkom dat linked input edits state.updateStickyText triggeren
       if (!isLinked) {
         textEl.addEventListener("input", () => {
           state.updateStickyText(colIdx, slotIdx, textEl.textContent);
@@ -410,9 +398,12 @@ export function setupDelegatedEvents() {
   const colsContainer = $("cols");
   if (!colsContainer) return;
 
-  colsContainer.addEventListener("click", (e) => {
+  const handle = (e) => {
     const btn = e.target.closest(".btn-col-action");
     if (!btn) return;
+
+    e.preventDefault();
+    e.stopPropagation();
 
     const colEl = btn.closest(".col");
     if (!colEl) return;
@@ -439,8 +430,14 @@ export function setupDelegatedEvents() {
         } else {
           const col = state.activeSheet.columns[idx];
           col.isParallel = !col.isParallel;
+          state.saveStickyDetails?.();
+          state.notify?.();
         }
         break;
     }
-  });
+  };
+
+  colsContainer.addEventListener("pointerdown", handle, true);
+  colsContainer.addEventListener("mousedown", handle, true);
+  colsContainer.addEventListener("touchstart", handle, { capture: true, passive: false });
 }
