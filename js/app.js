@@ -1,29 +1,16 @@
-// ===============================
-// File: js/app.js  (VOLLEDIG AANGEPAST)
-// Fixes:
-// 1) Bij wisselen van sheet/tab worden open modal-wijzigingen gesynchroniseerd (zonder sluiten)
-//    => inputDefinitions/QA blijven behouden zonder “opslaan + heropenen”.
-// 2) Menubar knoppen “titel wijzigen” en “nieuw blad” werken ook als IDs afwijken:
-//    - ondersteunt zowel oude als nieuwe ID’s via fallback selectors.
-// 3) Dubbelklik op board-header blijft hernoemen.
-// ===============================
-
 import { state } from './state.js';
-import { renderBoard, setupDelegatedEvents } from './dom.js';
+import { renderBoard, setupDelegatedEvents, applyStateUpdate } from './dom.js';
 import { openEditModal, saveModalDetails } from './modals.js';
 import { saveToFile, loadFromFile, exportToCSV, exportHD } from './io.js';
 import { Toast } from './toast.js';
 
 const $ = (id) => document.getElementById(id);
 
-// Fallback: vind element via lijst van mogelijke ids/selectors
 const pickEl = (...selectors) => {
   for (const sel of selectors) {
     if (!sel) continue;
-    // id
     const byId = document.getElementById(sel);
     if (byId) return byId;
-    // css selector
     const bySel = document.querySelector(sel);
     if (bySel) return bySel;
   }
@@ -60,20 +47,15 @@ const initToast = () => {
   }
 };
 
-// ---------------------------
-// NEW: sync open modal changes without closing
-// ---------------------------
 const syncOpenModal = () => {
   const modal = $("editModal");
   if (!modal) return;
   const isOpen = modal.style.display && modal.style.display !== "none";
   if (!isOpen) return;
 
-  // saveModalDetails(closeModal=false) — jouw aangepaste modals.js
   try {
     saveModalDetails(false);
   } catch (e) {
-    // fail-safe: nooit sheet switch blokkeren
     console.warn("Modal sync failed", e);
   }
 };
@@ -92,12 +74,10 @@ const setupProjectTitle = () => {
   const titleInput = $("boardTitle");
   if (!titleInput) return;
 
-  // Update project title while typing
   titleInput.addEventListener("input", (e) => {
     state.updateProjectTitle(e.target.value);
   });
 
-  // Optional: keep when leaving field
   titleInput.addEventListener("blur", () => {
     state.updateProjectTitle(titleInput.value);
   });
@@ -107,20 +87,15 @@ const setupSheetControls = () => {
   const sheetSelect = $("sheetSelect");
   if (sheetSelect) {
     sheetSelect.addEventListener("change", (e) => {
-      // ✅ Sync modal before sheet switch
       syncOpenModal();
-
       state.setActiveSheet(e.target.value);
       safeToast(`Gewisseld naar: ${state.activeSheet.name}`, "info", 1000);
     });
   }
 
-  // --- Menubar buttons (robust ids) ---
-  // In sommige HTML’s heten deze anders; daarom fallback.
   const btnRename = pickEl("btnRenameSheet", "#btnRenameSheet", "[data-action='rename-sheet']");
   bindClickEl(btnRename, renameActiveSheet);
 
-  const headerDisp = $("board-header-display");
   document.addEventListener("dblclick", (e) => {
     if (e.target && e.target.id === "board-header-display") renameActiveSheet();
   });
@@ -128,7 +103,6 @@ const setupSheetControls = () => {
   const btnAdd = pickEl("btnAddSheet", "#btnAddSheet", "[data-action='add-sheet']", "#addSheetBtn");
   bindClickEl(btnAdd, () => {
     syncOpenModal();
-
     const name = prompt("Nieuw procesblad naam:", `Proces ${state.data.sheets.length + 1}`);
     if (!name || !name.trim()) return;
     state.addSheet(name.trim());
@@ -148,7 +122,6 @@ const setupSheetControls = () => {
     safeToast("Procesblad verwijderd", "info");
   });
 
-  // Extra: als iemand via andere UI (tabs/links) wisselt, sync dan ook bij focus-loss
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) syncOpenModal();
   });
@@ -282,7 +255,6 @@ const setupColumnManager = () => {
 };
 
 const setupModals = () => {
-  // Save button: sluit modal (saveModalDetails(true))
   bindClick("modalSaveBtn", () => {
     saveModalDetails(true);
     safeToast("Wijzigingen opgeslagen", "save");
@@ -297,8 +269,8 @@ const setupModals = () => {
 const setupStateSubscription = () => {
   const titleInput = $("boardTitle");
 
-  state.subscribe(() => {
-    renderBoard(openEditModal);
+  state.subscribe((_, meta) => {
+    applyStateUpdate(meta, openEditModal);
 
     if (titleInput && state.data.projectTitle && document.activeElement !== titleInput) {
       titleInput.value = state.data.projectTitle;
@@ -330,7 +302,6 @@ const setupGlobalHotkeys = () => {
 };
 
 const initApp = () => {
-  console.log("🚀 SIPOC Application Started");
   initToast();
   setupDelegatedEvents();
   setupProjectTitle();

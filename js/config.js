@@ -56,7 +56,7 @@ export const LEAN_VALUES = deepFreeze([
 
 export const PROCESS_STATUSES = deepFreeze([
     { value: "SAD", label: "Niet in control", emoji: "☹️", class: "selected-sad" },
-    { value: "NEUTRAL", label: "Kwetsbaar", emoji: "😐", class: "selected-neu" },
+    { value: "NEUTRAL", label: "Aandachtspunt", emoji: "😐", class: "selected-neu" },
     { value: "HAPPY", label: "In control", emoji: "🙂", class: "selected-hap" }
 ]);
 

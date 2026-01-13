@@ -501,17 +501,17 @@
     pointer-events: none;
     transform: translateY(8px);
     transition:
-        opacity 0.3s ease 0.5s,
-        transform 0.3s ease 0.5s,
-        pointer-events 0s 0.5s;
+        opacity 0.15s ease,
+        transform 0.15s ease;
 }
 
 .col:hover .col-actions,
-.col-actions:hover {
+.col-actions:hover,
+.col-actions:active,
+.col:focus-within .col-actions {
     opacity: 1;
     pointer-events: auto;
     transform: translateY(0);
-    transition: all 0.2s ease 0s;
 }
 
 .btn-col-action {
@@ -524,17 +524,27 @@
     cursor: pointer;
     color: #ffffff;
     border: 1px solid rgba(255, 255, 255, 0.1);
-    background: rgba(30, 30, 30, 0.8);
+    background: rgba(30, 30, 30, 0.85);
     backdrop-filter: blur(4px);
     box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
-    transition: all 0.15s;
+    transition: transform 0.12s, background 0.12s, border-color 0.12s, opacity 0.12s;
+    position: relative;
+    z-index: 50;
+    pointer-events: auto;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
 }
 
 .btn-col-action:hover {
     background: var(--ui-accent);
     border-color: var(--ui-accent);
-    transform: scale(1.1);
-    z-index: 10;
+    transform: scale(1.08);
+    z-index: 60;
+}
+
+.btn-col-action:active {
+    transform: scale(0.98);
 }
 
 .btn-delete-col:hover {
@@ -657,6 +667,7 @@
 }
 
 .label-tl,
+.label-tr,
 .label-br,
 .id-tag,
 .qa-score-badge {
@@ -674,6 +685,15 @@
     opacity: 0.8;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+}
+
+.label-tr {
+    top: 2px;
+    right: 4px;
+    font-size: 12px;
+    font-weight: 900;
+    opacity: 0.95;
+    line-height: 1;
 }
 
 .label-br {

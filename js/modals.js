@@ -15,6 +15,31 @@ let areListenersAttached = false;
 
 const $ = (id) => document.getElementById(id);
 
+const PROCESS_STATUS_DEFS = {
+  HAPPY: {
+    title: 'Onder controle',
+    body:
+      'Het proces verloopt voorspelbaar en stabiel. Input/werkstappen zijn duidelijk, afwijkingen zijn zeldzaam en impact is laag. Er is geen herstelwerk nodig om door te kunnen.'
+  },
+  NEUTRAL: {
+    title: 'Aandachtspunt',
+    body:
+      'Het proces werkt meestal, maar is niet altijd voorspelbaar. Er zijn terugkerende haperingen of variatie waardoor soms extra afstemming/herstelwerk nodig is. Risico op verstoring is aanwezig.'
+  },
+  SAD: {
+    title: 'Niet onder controle',
+    body:
+      'Het proces is instabiel of faalt regelmatig. Variatie en verstoringen zijn hoog, er is vaak herstelwerk nodig, en doorlooptijd/kwaliteit wordt structureel geraakt.'
+  }
+};
+
+const escapeAttr = (v) =>
+  String(v ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
 const createRadioGroup = (name, options, selectedValue, isHorizontal = false) => `
   <div class="radio-group-container ${isHorizontal ? 'horizontal' : 'vertical'}">
     ${options
@@ -45,15 +70,15 @@ const createDynamicList = (items, placeholder, type) => {
         .map(
           (item) => `
             <div class="dynamic-row">
-              <input type="text" value="${item}" class="def-input" placeholder="${placeholder}">
-              <button class="btn-row-del-tiny" data-action="remove-row" title="Verwijder regel">×</button>
+              <input type="text" value="${escapeAttr(item)}" class="def-input" placeholder="${escapeAttr(placeholder)}">
+              <button class="btn-row-del-tiny" data-action="remove-row" title="Verwijder regel" type="button">×</button>
             </div>
           `
         )
         .join('')}
     </div>
-    <button class="btn-row-add btn-row-add-tiny" data-action="add-list-item" data-type="${type}">
-      + ${placeholder} toevoegen
+    <button class="btn-row-add btn-row-add-tiny" data-action="add-list-item" data-type="${escapeAttr(type)}" type="button">
+      + ${escapeAttr(placeholder)} toevoegen
     </button>
   `;
 };
@@ -74,7 +99,7 @@ const renderSystemTab = (data) => {
 
     html += `
       <div class="system-question">
-        <div class="sys-q-title">${q.label}</div>
+        <div class="sys-q-title">${escapeAttr(q.label)}</div>
         ${createRadioGroup(`sys_${q.id}`, optionsMapped, currentVal, true)}
       </div>
     `;
@@ -88,14 +113,24 @@ const renderProcessTab = (data) => {
   const isHappy = status === 'HAPPY';
   const isBad = status === 'SAD' || status === 'NEUTRAL';
 
-  const statusHtml = PROCESS_STATUSES.map(
-    (s) => `
-      <div class="status-option ${status === s.value ? s.class : ''}" data-action="set-status" data-val="${s.value}">
-        <span class="status-emoji">${s.emoji}</span>
-        <span class="status-text">${s.label}</span>
+  const statusHtml = PROCESS_STATUSES.map((s) => {
+    const def = PROCESS_STATUS_DEFS[s.value] || {};
+    const tTitle = def.title || s.label || '';
+    const tBody = def.body || '';
+    return `
+      <div class="status-option ${status === s.value ? s.class : ''}"
+           data-action="set-status"
+           data-val="${escapeAttr(s.value)}"
+           data-tt-title="${escapeAttr(tTitle)}"
+           data-tt-body="${escapeAttr(tBody)}"
+           tabindex="0"
+           role="button"
+           aria-label="${escapeAttr(tTitle)}">
+        <span class="status-emoji">${escapeAttr(s.emoji)}</span>
+        <span class="status-text">${escapeAttr(s.label)}</span>
       </div>
-    `
-  ).join('');
+    `;
+  }).join('');
 
   const disruptions =
     data.disruptions && data.disruptions.length > 0
@@ -106,10 +141,10 @@ const renderProcessTab = (data) => {
     .map(
       (dis, i) => `
         <tr>
-          <td><input class="def-input" value="${dis.scenario || ''}" placeholder="Scenario..."></td>
+          <td><input class="def-input" value="${escapeAttr(dis.scenario || '')}" placeholder="Scenario..."></td>
           <td>${createRadioGroup(`dis_freq_${i}`, DISRUPTION_FREQUENCIES, dis.frequency, false)}</td>
-          <td><input class="def-input" value="${dis.workaround || ''}" placeholder="Workaround..."></td>
-          <td><button class="btn-row-del-tiny" data-action="remove-row">×</button></td>
+          <td><input class="def-input" value="${escapeAttr(dis.workaround || '')}" placeholder="Workaround..."></td>
+          <td><button class="btn-row-del-tiny" data-action="remove-row" type="button">×</button></td>
         </tr>
       `
     )
@@ -118,7 +153,7 @@ const renderProcessTab = (data) => {
   return `
     <div class="modal-label">Proces Status ${!status ? '<span style="color:#ff5252">*</span>' : ''}</div>
     <div class="status-selector">${statusHtml}</div>
-    <input type="hidden" id="processStatus" value="${status || ''}">
+    <input type="hidden" id="processStatus" value="${escapeAttr(status || '')}">
 
     <div class="metrics-grid" style="margin-top: 24px;">
       <div>
@@ -133,13 +168,13 @@ const renderProcessTab = (data) => {
 
     <div id="sectionHappy" style="display: ${isHappy ? 'block' : 'none'}; margin-top:20px;">
       <div class="modal-label" style="color:var(--ui-success)">Waarom werkt dit goed? (Succesfactoren)</div>
-      <textarea id="successFactors" class="modal-input" placeholder="Bv. Standaard gevolgd, Cpk > 1.33...">${data.successFactors || ''}</textarea>
+      <textarea id="successFactors" class="modal-input" placeholder="Bv. Standaard gevolgd, Cpk > 1.33...">${escapeAttr(data.successFactors || '')}</textarea>
     </div>
 
     <div id="sectionBad" style="display: ${isBad ? 'block' : 'none'}; margin-top:20px;">
       <div class="tab-nav">
-        <button class="tab-btn active" data-tab="analyse">Analyse</button>
-        <button class="tab-btn" data-tab="disrupt">Verstoringen</button>
+        <button class="tab-btn active" data-tab="analyse" type="button">Analyse</button>
+        <button class="tab-btn" data-tab="disrupt" type="button">Verstoringen</button>
       </div>
 
       <div id="subTabAnalyse" style="padding-top: 10px;">
@@ -156,7 +191,7 @@ const renderProcessTab = (data) => {
           <thead><tr><th style="width:30%">Scenario</th><th style="width:25%">Frequentie</th><th style="width:40%">Workaround</th><th></th></tr></thead>
           <tbody id="disruptTbody">${disruptRows}</tbody>
         </table>
-        <button class="btn-row-add" data-action="add-disrupt-row">+ Verstoring toevoegen</button>
+        <button class="btn-row-add" data-action="add-disrupt-row" type="button">+ Verstoring toevoegen</button>
       </div>
     </div>
   `;
@@ -169,10 +204,10 @@ const renderIoTab = (data, isInputRow) => {
   if (isInputRow) {
     const allOutputs = state.getAllOutputs();
     const options = Object.entries(allOutputs)
-      .map(
-        ([id, text]) =>
-          `<option value="${id}" ${data.linkedSourceId === id ? 'selected' : ''}>${id}: ${text.substring(0, 40)}...</option>`
-      )
+      .map(([id, text]) => {
+        const t = (text || '').substring(0, 40);
+        return `<option value="${escapeAttr(id)}" ${data.linkedSourceId === id ? 'selected' : ''}>${escapeAttr(id)}: ${escapeAttr(t)}${(text || '').length > 40 ? '...' : ''}</option>`;
+      })
       .join('');
 
     linkHtml = `
@@ -191,8 +226,8 @@ const renderIoTab = (data, isInputRow) => {
 
   let html = `
     <div class="tab-nav">
-      <button class="tab-btn ${isDef ? 'active' : ''}" data-tab="def">1. Definitie & Specs</button>
-      <button class="tab-btn ${!isDef ? 'active' : ''}" data-tab="qual">2. Kwaliteits Criteria</button>
+      <button class="tab-btn ${isDef ? 'active' : ''}" data-tab="def" type="button">1. Definitie & Specs</button>
+      <button class="tab-btn ${!isDef ? 'active' : ''}" data-tab="qual" type="button">2. Kwaliteits Criteria</button>
     </div>
   `;
 
@@ -206,10 +241,10 @@ const renderIoTab = (data, isInputRow) => {
       .map(
         (def, i) => `
           <tr>
-            <td><input class="def-input" value="${def.item || ''}" placeholder="Naam item..."></td>
-            <td><textarea class="def-sub-input" placeholder="Specificaties...">${def.specifications || ''}</textarea></td>
+            <td><input class="def-input" value="${escapeAttr(def.item || '')}" placeholder="Naam item..."></td>
+            <td><textarea class="def-sub-input" placeholder="Specificaties...">${escapeAttr(def.specifications || '')}</textarea></td>
             <td>${createRadioGroup(`def_type_${i}`, DEFINITION_TYPES, def.type, true)}</td>
-            <td><button class="btn-row-del-tiny" data-action="remove-row">×</button></td>
+            <td><button class="btn-row-del-tiny" data-action="remove-row" type="button">×</button></td>
           </tr>
         `
       )
@@ -222,7 +257,7 @@ const renderIoTab = (data, isInputRow) => {
           <thead><tr><th style="width:25%">Item</th><th style="width:40%">Specificaties</th><th style="width:30%">Type</th><th></th></tr></thead>
           <tbody id="defTbody">${rows}</tbody>
         </table>
-        <button class="btn-row-add" data-action="add-def-row">+ Specificatie toevoegen</button>
+        <button class="btn-row-add" data-action="add-def-row" type="button">+ Specificatie toevoegen</button>
       </div>
     `;
   } else {
@@ -233,12 +268,12 @@ const renderIoTab = (data, isInputRow) => {
           <thead><tr><th>Criterium</th><th>Resultaat</th><th>Opmerking</th></tr></thead>
           <tbody>
             ${IO_CRITERIA.map((c) => {
-              const qa = data.qa[c.key] || {};
+              const qa = data.qa?.[c.key] || {};
               return `
                 <tr>
                   <td>
-                    <div style="font-weight:bold; color:#fff;">${c.label}</div>
-                    <div style="font-size:10px; opacity:0.6">${c.meet}</div>
+                    <div style="font-weight:bold; color:#fff;">${escapeAttr(c.label)}</div>
+                    <div style="font-size:10px; opacity:0.6">${escapeAttr(c.meet)}</div>
                   </td>
                   <td style="width:240px;">
                     ${createRadioGroup(
@@ -252,7 +287,7 @@ const renderIoTab = (data, isInputRow) => {
                       true
                     )}
                   </td>
-                  <td><textarea id="note_${c.key}" class="io-note" placeholder="Opmerking...">${qa.note || ''}</textarea></td>
+                  <td><textarea id="note_${c.key}" class="io-note" placeholder="Opmerking...">${escapeAttr(qa.note || '')}</textarea></td>
                 </tr>
               `;
             }).join('')}
@@ -292,16 +327,87 @@ const renderContent = () => {
   }
 };
 
-// ---------------------------
-// NEW: sync zonder modal sluiten
-// ---------------------------
 function syncModalToState() {
-  // Alleen syncen als er een modal open is en editingSticky actief is
   const modal = $("editModal");
   if (!modal || modal.style.display === "none") return;
-
-  // closeModal=false => modal blijft open
   saveModalDetails(false);
+}
+
+let _ttEl = null;
+let _ttVisible = false;
+
+function ensureTooltipEl() {
+  if (_ttEl) return _ttEl;
+
+  const el = document.createElement('div');
+  el.id = 'customTooltip';
+  el.style.position = 'fixed';
+  el.style.left = '0px';
+  el.style.top = '0px';
+  el.style.transform = 'translate(-9999px, -9999px)';
+  el.style.zIndex = '10000';
+  el.style.pointerEvents = 'none';
+  el.style.opacity = '0';
+  el.style.transition = 'opacity 120ms ease, transform 120ms ease';
+  el.style.maxWidth = '360px';
+  el.style.padding = '10px 12px';
+  el.style.borderRadius = '10px';
+  el.style.background = 'rgba(20, 24, 28, 0.95)';
+  el.style.border = '1px solid rgba(255,255,255,0.12)';
+  el.style.boxShadow = '0 10px 30px rgba(0,0,0,0.45)';
+  el.style.backdropFilter = 'blur(10px)';
+  el.style.color = '#fff';
+  el.style.fontFamily = '"Inter", sans-serif';
+  el.style.fontSize = '12px';
+  el.style.lineHeight = '1.4';
+
+  el.innerHTML = `
+    <div style="font-weight:900; font-size:11px; letter-spacing:.6px; text-transform:uppercase; opacity:.9; margin-bottom:6px;" data-tt="title"></div>
+    <div style="opacity:.85" data-tt="body"></div>
+  `;
+
+  document.body.appendChild(el);
+  _ttEl = el;
+  return el;
+}
+
+function showTooltip(target, x, y) {
+  const el = ensureTooltipEl();
+
+  const title = target?.dataset?.ttTitle || '';
+  const body = target?.dataset?.ttBody || '';
+  if (!title && !body) return;
+
+  const tEl = el.querySelector('[data-tt="title"]');
+  const bEl = el.querySelector('[data-tt="body"]');
+  if (tEl) tEl.textContent = title;
+  if (bEl) bEl.textContent = body;
+
+  const pad = 12;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+
+  el.style.opacity = '1';
+  _ttVisible = true;
+
+  const rect = el.getBoundingClientRect();
+  let left = x + pad;
+  let top = y + pad;
+
+  if (left + rect.width + 8 > vw) left = x - rect.width - pad;
+  if (top + rect.height + 8 > vh) top = y - rect.height - pad;
+
+  left = Math.max(8, Math.min(vw - rect.width - 8, left));
+  top = Math.max(8, Math.min(vh - rect.height - 8, top));
+
+  el.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`;
+}
+
+function hideTooltip() {
+  if (!_ttEl || !_ttVisible) return;
+  _ttEl.style.opacity = '0';
+  _ttEl.style.transform = 'translate(-9999px, -9999px)';
+  _ttVisible = false;
 }
 
 const setupPermanentListeners = () => {
@@ -314,7 +420,34 @@ const setupPermanentListeners = () => {
   if (cancelBtn && modal) cancelBtn.onclick = () => (modal.style.display = "none");
   if (!content) return;
 
-  // radio toggle
+  content.addEventListener("pointerenter", (e) => {
+    const opt = e.target.closest(".status-option");
+    if (!opt) return;
+    showTooltip(opt, e.clientX, e.clientY);
+  }, true);
+
+  content.addEventListener("pointermove", (e) => {
+    const opt = e.target.closest(".status-option");
+    if (!opt) {
+      hideTooltip();
+      return;
+    }
+    showTooltip(opt, e.clientX, e.clientY);
+  }, true);
+
+  content.addEventListener("pointerleave", (e) => {
+    const opt = e.target.closest(".status-option");
+    if (!opt) return;
+    hideTooltip();
+  }, true);
+
+  content.addEventListener("scroll", () => hideTooltip(), { passive: true });
+  if (modal) modal.addEventListener("scroll", () => hideTooltip(), { passive: true });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") hideTooltip();
+  });
+
   content.addEventListener("click", (e) => {
     const opt = e.target.closest(".sys-opt");
     if (!opt) return;
@@ -334,24 +467,21 @@ const setupPermanentListeners = () => {
     if (input) input.value = opt.dataset.value;
   });
 
-  // tabs
   content.addEventListener("click", (e) => {
     const btn = e.target.closest(".tab-btn");
     if (!btn) return;
 
     const tabName = btn.dataset.tab;
 
-    // IO tabs: def/qual => eerst syncen, dan rerenderen
     if (tabName === "def" || tabName === "qual") {
-      syncModalToState();          // ✅ FIX: behoud inputDefinitions / qa bij tab switch
+      syncModalToState();
       activeIoTab = tabName;
       renderContent();
       return;
     }
 
-    // Process subtabs: analyse/disrupt => eerst syncen, dan UI switch
     if (tabName === "analyse" || tabName === "disrupt") {
-      syncModalToState();          // ✅ FIX: behoud RC/CM/disrupt rows bij switch
+      syncModalToState();
 
       content.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
@@ -363,7 +493,6 @@ const setupPermanentListeners = () => {
     }
   });
 
-  // status selector
   content.addEventListener("click", (e) => {
     const statusOpt = e.target.closest(".status-option");
     if (!statusOpt) return;
@@ -386,6 +515,7 @@ const setupPermanentListeners = () => {
       input.value = "";
       if (happySection) happySection.style.display = "none";
       if (badSection) badSection.style.display = "none";
+      hideTooltip();
       return;
     }
 
@@ -397,7 +527,6 @@ const setupPermanentListeners = () => {
     if (badSection) badSection.style.display = !isHappy ? "block" : "none";
   });
 
-  // dynamic rows
   content.addEventListener("click", (e) => {
     const target = e.target;
 
@@ -415,7 +544,7 @@ const setupPermanentListeners = () => {
       div.className = "dynamic-row";
       div.innerHTML = `
         <input type="text" class="def-input" placeholder="${type === 'RC' ? 'Oorzaak...' : 'Maatregel...'}">
-        <button class="btn-row-del-tiny" data-action="remove-row">×</button>
+        <button class="btn-row-del-tiny" data-action="remove-row" type="button">×</button>
       `;
       wrapper.appendChild(div);
       div.querySelector("input")?.focus();
@@ -431,7 +560,7 @@ const setupPermanentListeners = () => {
         <td><input class="def-input" placeholder="Naam item..."></td>
         <td><textarea class="def-sub-input" placeholder="Specificaties..."></textarea></td>
         <td>${createRadioGroup(`def_type_new_${Date.now()}`, DEFINITION_TYPES, null, true)}</td>
-        <td><button class="btn-row-del-tiny" data-action="remove-row">×</button></td>
+        <td><button class="btn-row-del-tiny" data-action="remove-row" type="button">×</button></td>
       `;
       tbody.appendChild(tr);
       tr.querySelector("input")?.focus();
@@ -447,14 +576,13 @@ const setupPermanentListeners = () => {
         <td><input class="def-input" placeholder="Scenario..."></td>
         <td>${createRadioGroup(`dis_freq_new_${Date.now()}`, DISRUPTION_FREQUENCIES, null, false)}</td>
         <td><input class="def-input" placeholder="Workaround..."></td>
-        <td><button class="btn-row-del-tiny" data-action="remove-row">×</button></td>
+        <td><button class="btn-row-del-tiny" data-action="remove-row" type="button">×</button></td>
       `;
       tbody.appendChild(tr);
       tr.querySelector("input")?.focus();
     }
   });
 
-  // ✅ Input bron direct opslaan
   content.addEventListener("change", (e) => {
     if (e.target?.id !== "inputSourceSelect") return;
 
@@ -466,7 +594,6 @@ const setupPermanentListeners = () => {
     const info = $("linkedInfoText");
     if (info) info.style.display = e.target.value ? "block" : "none";
 
-    // Persist + rerender board
     state.saveStickyDetails();
   });
 };
@@ -486,10 +613,6 @@ export function openEditModal(colIdx, slotIdx) {
   if (modal) modal.style.display = "grid";
 }
 
-// ------------------------------------
-// AANGEPAST: saveModalDetails(closeModal = true)
-// - closeModal=false => sync alleen (voor tab switches)
-// ------------------------------------
 export function saveModalDetails(closeModal = true) {
   const data = getStickyData();
   if (!data) return;
@@ -591,11 +714,11 @@ export function saveModalDetails(closeModal = true) {
     }
   }
 
-  // ✅ Persist + trigger rerender + storage
   state.saveStickyDetails();
 
   if (closeModal) {
     const modal = $("editModal");
     if (modal) modal.style.display = "none";
+    hideTooltip();
   }
 }

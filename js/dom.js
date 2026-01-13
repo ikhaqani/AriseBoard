@@ -3,6 +3,12 @@ import { IO_CRITERIA, PROCESS_STATUSES } from './config.js';
 
 const $ = (id) => document.getElementById(id);
 
+let _openModalFn = null;
+let _delegatedBound = false;
+
+let _syncRaf = 0;
+let _lastPointerDownTs = 0;
+
 function calculateLSSScore(qa) {
   if (!qa) return null;
 
@@ -26,8 +32,6 @@ function getProcessEmoji(status) {
   return s?.emoji || '';
 }
 
-let _syncRaf = 0;
-
 function scheduleSyncRowHeights() {
   if (_syncRaf) cancelAnimationFrame(_syncRaf);
   _syncRaf = requestAnimationFrame(() => {
@@ -41,8 +45,9 @@ function syncRowHeightsNow() {
   const rowHeaders = rowHeadersEl?.children;
   if (!rowHeaders || !rowHeaders.length) return;
 
-  const cols = document.querySelectorAll(".col");
-  if (!cols.length) return;
+  const colsContainer = $("cols");
+  const cols = colsContainer?.querySelectorAll?.(".col");
+  if (!cols || !cols.length) return;
 
   const heights = Array(6).fill(160);
 
@@ -71,7 +76,7 @@ function syncRowHeightsNow() {
   const gapSize = 20;
   const processOffset = heights[0] + heights[1] + heights[2] + 3 * gapSize;
 
-  document.querySelectorAll(".col-connector").forEach((c) => {
+  colsContainer.querySelectorAll(".col-connector").forEach((c) => {
     if (!c.classList.contains("parallel-connector")) {
       c.style.paddingTop = `${processOffset}px`;
     }
@@ -94,12 +99,14 @@ function renderSheetSelect() {
   const select = $("sheetSelect");
   if (!select) return;
 
+  const activeId = state.project.activeSheetId;
   select.innerHTML = "";
+
   state.project.sheets.forEach((s) => {
     const opt = document.createElement("option");
     opt.value = s.id;
     opt.textContent = s.name;
-    opt.selected = s.id === state.project.activeSheetId;
+    opt.selected = s.id === activeId;
     select.appendChild(opt);
   });
 }
@@ -107,15 +114,6 @@ function renderSheetSelect() {
 function renderHeader(activeSheet) {
   const headDisp = $("board-header-display");
   if (headDisp) headDisp.textContent = activeSheet.name;
-}
-
-function shouldSkipRender() {
-  const focusedEl = document.activeElement;
-  if (!focusedEl) return false;
-  return (
-    focusedEl.classList.contains("text") ||
-    focusedEl.classList.contains("connector-input-minimal")
-  );
 }
 
 function attachStickyInteractions({ stickyEl, textEl, colIdx, slotIdx, openModalFn }) {
@@ -127,7 +125,7 @@ function attachStickyInteractions({ stickyEl, textEl, colIdx, slotIdx, openModal
     const sel = window.getSelection?.();
     if (sel) sel.removeAllRanges();
 
-    openModalFn(colIdx, slotIdx);
+    openModalFn?.(colIdx, slotIdx);
   };
 
   const focusText = (e) => {
@@ -135,7 +133,7 @@ function attachStickyInteractions({ stickyEl, textEl, colIdx, slotIdx, openModal
 
     if (
       e.target.closest(
-        ".sticky-grip, .qa-score-badge, .id-tag, .label-tl, .label-tr, .label-br, .link-icon, .btn-col-action, .col-actions"
+        ".sticky-grip, .qa-score-badge, .id-tag, .label-tl, .label-tr, .label-br, .link-icon, .btn-col-action, .col-actions, .connector-add, .connector-delete, .connector-input-minimal"
       )
     ) {
       return;
@@ -162,7 +160,7 @@ function buildScoreBadges({ slotIdx, slot }) {
   let html = "";
 
   const qaScore = calculateLSSScore(slot.qa);
-  if (qaScore !== null) {
+  if (qaScore !== null && (slotIdx === 2 || slotIdx === 4)) {
     const badgeClass = qaScore >= 80 ? "score-high" : qaScore >= 60 ? "score-med" : "score-low";
     html += `<div class="qa-score-badge ${badgeClass}">Q: ${qaScore}%</div>`;
   }
@@ -213,7 +211,7 @@ function buildSlotHTML({
   `;
 }
 
-function renderConnector({ colsContainer, activeSheet, col, colIdx }) {
+function renderConnector({ frag, activeSheet, col, colIdx }) {
   if (colIdx >= activeSheet.columns.length - 1) return;
 
   let nextVisible = null;
@@ -230,7 +228,7 @@ function renderConnector({ colsContainer, activeSheet, col, colIdx }) {
   if (nextVisible.isParallel) {
     connEl.className = "col-connector parallel-connector";
     connEl.innerHTML = `<div class="parallel-line"></div><div class="parallel-badge">||</div>`;
-    colsContainer.appendChild(connEl);
+    frag.appendChild(connEl);
     return;
   }
 
@@ -242,48 +240,50 @@ function renderConnector({ colsContainer, activeSheet, col, colIdx }) {
         <input class="connector-input-minimal" placeholder="Tijd...">
         <div class="connector-arrow-minimal"></div>
         <span class="connector-text-export"></span>
-        <button class="connector-delete">×</button>
+        <button class="connector-delete" type="button">×</button>
       </div>
     `;
 
     const inp = connEl.querySelector("input");
     const exportSpan = connEl.querySelector(".connector-text-export");
-    const delBtn = connEl.querySelector(".connector-delete");
 
-    inp.value = col.transitionNext || "";
-    if (exportSpan) exportSpan.textContent = inp.value;
+    if (inp) {
+      inp.value = col.transitionNext || "";
+      if (exportSpan) exportSpan.textContent = inp.value;
 
-    inp.oninput = (e) => {
-      state.setTransition(colIdx, e.target.value);
-      if (exportSpan) exportSpan.textContent = e.target.value;
-    };
-
-    if (delBtn) {
-      delBtn.onclick = () => state.setTransition(colIdx, null);
+      inp.addEventListener("input", (e) => {
+        state.setTransition(colIdx, e.target.value);
+        if (exportSpan) exportSpan.textContent = e.target.value;
+      }, { passive: true });
     }
   } else {
     const btn = document.createElement("button");
     btn.className = "connector-add";
     btn.textContent = "+";
-    btn.onclick = () => state.setTransition(colIdx, "");
+    btn.type = "button";
+    btn.addEventListener("click", () => state.setTransition(colIdx, ""), { passive: true });
     connEl.appendChild(btn);
   }
 
-  colsContainer.appendChild(connEl);
+  frag.appendChild(connEl);
 }
 
-export function renderBoard(openModalFn) {
+function renderStats(stats) {
+  const happyEl = $("countHappy");
+  const neutralEl = $("countNeutral");
+  const sadEl = $("countSad");
+
+  if (happyEl) happyEl.textContent = stats.happy;
+  if (neutralEl) neutralEl.textContent = stats.neutral;
+  if (sadEl) sadEl.textContent = stats.sad;
+}
+
+function renderColumnsOnly(openModalFn) {
   const activeSheet = state.activeSheet;
   if (!activeSheet) return;
-  if (shouldSkipRender()) return;
-
-  renderSheetSelect();
-  renderHeader(activeSheet);
-  ensureRowHeaders();
 
   const colsContainer = $("cols");
   if (!colsContainer) return;
-  colsContainer.innerHTML = "";
 
   const offsets = state.getGlobalCountersBeforeActive();
   const allOutputMap = state.getAllOutputs();
@@ -293,20 +293,25 @@ export function renderBoard(openModalFn) {
 
   const stats = { happy: 0, neutral: 0, sad: 0 };
 
+  const frag = document.createDocumentFragment();
+
   activeSheet.columns.forEach((col, colIdx) => {
     if (col.isVisible === false) return;
 
     let myInputId = "";
     let myOutputId = "";
 
-    if (col.slots[2].linkedSourceId && allOutputMap[col.slots[2].linkedSourceId]) {
-      myInputId = col.slots[2].linkedSourceId;
-    } else if (col.slots[2].text?.trim()) {
+    const inputSlot = col.slots?.[2];
+    const outputSlot = col.slots?.[4];
+
+    if (inputSlot?.linkedSourceId && allOutputMap[inputSlot.linkedSourceId]) {
+      myInputId = inputSlot.linkedSourceId;
+    } else if (inputSlot?.text?.trim()) {
       localInCounter++;
       myInputId = `IN${offsets.inStart + localInCounter}`;
     }
 
-    if (col.slots[4].text?.trim()) {
+    if (outputSlot?.text?.trim()) {
       localOutCounter++;
       myOutputId = `OUT${offsets.outStart + localOutCounter}`;
     }
@@ -374,38 +379,85 @@ export function renderBoard(openModalFn) {
 
       const textEl = slotDiv.querySelector(".text");
       const stickyEl = slotDiv.querySelector(".sticky");
-
-      textEl.textContent = displayText;
+      if (textEl) textEl.textContent = displayText;
 
       attachStickyInteractions({ stickyEl, textEl, colIdx, slotIdx, openModalFn });
 
-      if (!isLinked) {
+      if (!isLinked && textEl) {
         textEl.addEventListener("input", () => {
           state.updateStickyText(colIdx, slotIdx, textEl.textContent);
-        });
+        }, { passive: true });
       }
 
       slotsEl.appendChild(slotDiv);
     });
 
     colEl.appendChild(slotsEl);
-    colsContainer.appendChild(colEl);
+    frag.appendChild(colEl);
 
-    renderConnector({ colsContainer, activeSheet, col, colIdx });
+    renderConnector({ frag, activeSheet, col, colIdx });
   });
 
-  const happyEl = $("countHappy");
-  const neutralEl = $("countNeutral");
-  const sadEl = $("countSad");
-
-  if (happyEl) happyEl.textContent = stats.happy;
-  if (neutralEl) neutralEl.textContent = stats.neutral;
-  if (sadEl) sadEl.textContent = stats.sad;
-
+  colsContainer.replaceChildren(frag);
+  renderStats(stats);
   scheduleSyncRowHeights();
 }
 
-let _delegatedBound = false;
+function updateSingleText(colIdx, slotIdx) {
+  const colsContainer = $("cols");
+  const colEl = colsContainer?.querySelector?.(`.col[data-idx="${colIdx}"]`);
+  if (!colEl) return false;
+
+  const slot = state.activeSheet.columns[colIdx]?.slots?.[slotIdx];
+  if (!slot) return false;
+
+  const slotEl = colEl.querySelector(`.sticky[data-col="${colIdx}"][data-slot="${slotIdx}"] .text`);
+  if (!slotEl) return false;
+
+  slotEl.textContent = slot.text ?? '';
+  return true;
+}
+
+export function renderBoard(openModalFn) {
+  _openModalFn = openModalFn || _openModalFn;
+
+  const activeSheet = state.activeSheet;
+  if (!activeSheet) return;
+
+  renderSheetSelect();
+  renderHeader(activeSheet);
+  ensureRowHeaders();
+  renderColumnsOnly(_openModalFn);
+}
+
+export function applyStateUpdate(meta, openModalFn) {
+  _openModalFn = openModalFn || _openModalFn;
+
+  const reason = meta?.reason || 'full';
+
+  if (reason === 'text' && Number.isFinite(meta?.colIdx) && Number.isFinite(meta?.slotIdx)) {
+    const ok = updateSingleText(meta.colIdx, meta.slotIdx);
+    if (ok) return;
+  }
+
+  if (reason === 'title') return;
+  if (reason === 'sheet' || reason === 'sheets') {
+    const activeSheet = state.activeSheet;
+    if (activeSheet) {
+      renderSheetSelect();
+      renderHeader(activeSheet);
+    }
+    renderColumnsOnly(_openModalFn);
+    return;
+  }
+
+  if (reason === 'columns' || reason === 'transition' || reason === 'details') {
+    renderColumnsOnly(_openModalFn);
+    return;
+  }
+
+  renderBoard(_openModalFn);
+}
 
 export function setupDelegatedEvents() {
   if (_delegatedBound) return;
@@ -417,6 +469,9 @@ export function setupDelegatedEvents() {
 
     const action = btn.dataset.action;
     if (!action) return;
+
+    if (e.type === 'mousedown' && performance.now() - _lastPointerDownTs < 250) return;
+    if (e.type === 'pointerdown') _lastPointerDownTs = performance.now();
 
     e.preventDefault();
     e.stopPropagation();
@@ -441,14 +496,7 @@ export function setupDelegatedEvents() {
         state.setColVisibility(idx, false);
         break;
       case "parallel":
-        if (state.toggleParallel) {
-          state.toggleParallel(idx);
-        } else {
-          const col = state.activeSheet.columns[idx];
-          col.isParallel = !col.isParallel;
-          state.saveStickyDetails?.();
-          state.notify?.();
-        }
+        state.toggleParallel?.(idx);
         break;
     }
   };
