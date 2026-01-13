@@ -119,6 +119,65 @@ const getStickyData = () => {
   return sheet.columns[editingSticky.colIdx].slots[editingSticky.slotIdx];
 };
 
+// ---------------------------------------------------------
+// Gate helpers (Option B)
+// ---------------------------------------------------------
+function getProcessIdForColumn(sheet, colIdx) {
+  const procSlot = sheet?.columns?.[colIdx]?.slots?.[3];
+  // Prefer stable slot.id if present
+  if (procSlot?.id) return String(procSlot.id);
+  // Fallback (works but is not stable if you reorder columns)
+  const sid = sheet?.id ? String(sheet.id) : 'sheet';
+  return `${sid}:col${colIdx}:process`;
+}
+
+function getProcessLabelForColumn(sheet, colIdx) {
+  const procSlot = sheet?.columns?.[colIdx]?.slots?.[3];
+  const raw = (procSlot?.text || '').trim();
+  const name = raw ? raw.replace(/\s+/g, ' ') : 'Proces (geen titel)';
+  const short = name.length > 48 ? name.slice(0, 48) + '…' : name;
+  return `${colIdx + 1}. ${short}`;
+}
+
+function buildProcessOptionsHTML(sheet, selectedId, { includeEmpty = false, emptyLabel = '-- Gebruik normale flow --' } = {}) {
+  const cols = sheet?.columns || [];
+  const opts = [];
+
+  if (includeEmpty) {
+    opts.push(
+      `<option value="" ${!selectedId ? 'selected' : ''}>${escapeAttr(emptyLabel)}</option>`
+    );
+  }
+
+  cols.forEach((col, colIdx) => {
+    if (col?.isVisible === false) return;
+
+    const pid = getProcessIdForColumn(sheet, colIdx);
+    const lbl = getProcessLabelForColumn(sheet, colIdx);
+    const sel = selectedId && String(selectedId) === String(pid) ? 'selected' : '';
+    opts.push(`<option value="${escapeAttr(pid)}" ${sel}>${escapeAttr(lbl)}</option>`);
+  });
+
+  return opts.join('');
+}
+
+function buildGateMultiSelectHTML(sheet, selectedIds) {
+  const set = new Set((selectedIds || []).map(String));
+  const cols = sheet?.columns || [];
+
+  return cols
+    .map((col, colIdx) => {
+      if (col?.isVisible === false) return '';
+      const pid = getProcessIdForColumn(sheet, colIdx);
+      const lbl = getProcessLabelForColumn(sheet, colIdx);
+      const sel = set.has(String(pid)) ? 'selected' : '';
+      return `<option value="${escapeAttr(pid)}" ${sel}>${escapeAttr(lbl)}</option>`;
+    })
+    .filter(Boolean)
+    .join('');
+}
+// ---------------------------------------------------------
+
 const renderSystemTab = (data) => {
   const sysData = data.systemData || {};
   let html = `<div id="systemWrapper"><div class="io-helper">Geef aan hoe goed dit systeem het proces ondersteunt.</div>`;
@@ -143,11 +202,12 @@ const renderProcessTab = (data) => {
   const isHappy = status === 'HAPPY';
   const isBad = status === 'SAD' || status === 'NEUTRAL';
 
-  const statusHtml = PROCESS_STATUSES.map((s) => {
-    const def = PROCESS_STATUS_DEFS[s.value] || {};
-    const tTitle = def.title || s.label || '';
-    const tBody = def.body || '';
-    return `
+  const statusHtml = PROCESS_STATUSES
+    .map((s) => {
+      const def = PROCESS_STATUS_DEFS[s.value] || {};
+      const tTitle = def.title || s.label || '';
+      const tBody = def.body || '';
+      return `
       <div class="status-option ${status === s.value ? s.class : ''}"
            data-action="set-status"
            data-val="${escapeAttr(s.value)}"
@@ -160,12 +220,14 @@ const renderProcessTab = (data) => {
         <span class="status-text">${escapeAttr(s.label)}</span>
       </div>
     `;
-  }).join('');
+    })
+    .join('');
 
-  // NEW: Werkbeleving UI
+  // Werkbeleving UI
   const workExp = data.workExp || null;
-
-  const workExpHtml = WORK_EXP_OPTIONS.map((o) => `
+  const workExpHtml = WORK_EXP_OPTIONS
+    .map(
+      (o) => `
       <div class="status-option ${workExp === o.value ? o.cls : ''}"
            data-action="set-workexp"
            data-val="${escapeAttr(o.value)}"
@@ -177,7 +239,9 @@ const renderProcessTab = (data) => {
         <span class="status-emoji">${escapeAttr(o.icon)}</span>
         <span class="status-text">${escapeAttr(o.label)}</span>
       </div>
-  `).join('');
+  `
+    )
+    .join('');
 
   const disruptions =
     data.disruptions && data.disruptions.length > 0
@@ -197,6 +261,77 @@ const renderProcessTab = (data) => {
     )
     .join('');
 
+  // ---------------------------------------------------------
+  // Gate / Checks panel (Option B)
+  // ---------------------------------------------------------
+  const sheet = state.activeSheet;
+  const isGate = !!data.isGate;
+  const gate = data.gate || {};
+  const gateRule = gate.rule || 'ALL_OK';
+  const checkIds = Array.isArray(gate.checkProcessIds) ? gate.checkProcessIds : [];
+  const failTarget = gate.onFailTargetProcessId || '';
+  const passTarget = gate.onPassTargetProcessId || '';
+
+  const gateChecksOptions = buildGateMultiSelectHTML(sheet, checkIds);
+  const failOptions = buildProcessOptionsHTML(sheet, failTarget, {
+    includeEmpty: false
+  });
+  const passOptions = buildProcessOptionsHTML(sheet, passTarget, {
+    includeEmpty: true,
+    emptyLabel: '-- Gebruik normale flow (connector naar rechts) --'
+  });
+
+  const gateHtml = `
+    <div style="margin-top: 22px; padding: 14px; border-radius: 10px; background: rgba(0,0,0,0.18); border: 1px solid rgba(255,255,255,0.10);">
+      <div class="modal-label" style="margin-top:0;">Gate / Checks</div>
+
+      <label style="display:flex; align-items:center; gap:10px; font-size:13px; color:#eceff1; font-weight:600;">
+        <input type="checkbox" id="isGate" ${isGate ? 'checked' : ''} />
+        Dit proces is een Gate (controlepunt)
+      </label>
+
+      <div id="gateFields" style="margin-top:14px; display:${isGate ? 'block' : 'none'};">
+        <div class="io-helper" style="margin:0 0 12px 0; font-size:13px;">
+          Definieer welke check-processen allemaal <b>OK</b> moeten zijn om door te mogen. Bij <b>NOT OK</b> kies je waar het proces naartoe terugvalt.
+        </div>
+
+        <div class="modal-label" style="margin-top:0;">Checks (selecteer één of meerdere processen)</div>
+        <select id="gateChecks" class="modal-input" multiple size="6" style="height:auto;">
+          ${gateChecksOptions}
+        </select>
+        <div style="margin-top:6px; font-size:11px; color:#90a4ae;">
+          Tip: op Mac: ⌘-klik om meerdere te selecteren. Op Windows: Ctrl-klik.
+        </div>
+
+        <div class="metrics-grid" style="margin-top: 16px;">
+          <div>
+            <div class="modal-label">Gate regel</div>
+            <select id="gateRule" class="modal-input">
+              <option value="ALL_OK" ${gateRule === 'ALL_OK' ? 'selected' : ''}>Alle checks moeten OK zijn (AND)</option>
+              <!-- uitbreidbaar later: MIN_N_OK, ANY_OK -->
+            </select>
+          </div>
+          <div>
+            <div class="modal-label">Als FAIL → ga naar proces</div>
+            <select id="gateFailTarget" class="modal-input">
+              ${failOptions}
+            </select>
+          </div>
+        </div>
+
+        <div style="margin-top: 16px;">
+          <div class="modal-label">Als PASS → ga naar proces</div>
+          <select id="gatePassTarget" class="modal-input">
+            ${passOptions}
+          </select>
+        </div>
+
+        <textarea id="gateNote" class="modal-input" style="margin-top:12px;" placeholder="Notitie (optioneel): toelichting op de gate / acceptatiecriteria.">${escapeAttr(gate.note || '')}</textarea>
+      </div>
+    </div>
+  `;
+  // ---------------------------------------------------------
+
   return `
     <div class="modal-label">Proces Status ${!status ? '<span style="color:#ff5252">*</span>' : ''}</div>
     <div class="status-selector">${statusHtml}</div>
@@ -209,6 +344,8 @@ const renderProcessTab = (data) => {
     <div class="status-selector">${workExpHtml}</div>
     <input type="hidden" id="workExp" value="${escapeAttr(workExp || '')}">
     <textarea id="workExpNote" class="modal-input" placeholder="Korte context (optioneel): wat maakt dit een obstakel/routine/flow?">${escapeAttr(data.workExpNote || '')}</textarea>
+
+    ${gateHtml}
 
     <div class="metrics-grid" style="margin-top: 24px;">
       <div>
@@ -223,7 +360,9 @@ const renderProcessTab = (data) => {
 
     <div id="sectionHappy" style="display: ${isHappy ? 'block' : 'none'}; margin-top:20px;">
       <div class="modal-label" style="color:var(--ui-success)">Waarom werkt dit goed? (Succesfactoren)</div>
-      <textarea id="successFactors" class="modal-input" placeholder="Bv. Standaard gevolgd, Cpk > 1.33...">${escapeAttr(data.successFactors || '')}</textarea>
+      <textarea id="successFactors" class="modal-input" placeholder="Bv. Standaard gevolgd, Cpk > 1.33...">${escapeAttr(
+        data.successFactors || ''
+      )}</textarea>
     </div>
 
     <div id="sectionBad" style="display: ${isBad ? 'block' : 'none'}; margin-top:20px;">
@@ -261,7 +400,9 @@ const renderIoTab = (data, isInputRow) => {
     const options = Object.entries(allOutputs)
       .map(([id, text]) => {
         const t = (text || '').substring(0, 40);
-        return `<option value="${escapeAttr(id)}" ${data.linkedSourceId === id ? 'selected' : ''}>${escapeAttr(id)}: ${escapeAttr(t)}${(text || '').length > 40 ? '...' : ''}</option>`;
+        return `<option value="${escapeAttr(id)}" ${
+          data.linkedSourceId === id ? 'selected' : ''
+        }>${escapeAttr(id)}: ${escapeAttr(t)}${(text || '').length > 40 ? '...' : ''}</option>`;
       })
       .join('');
 
@@ -297,7 +438,9 @@ const renderIoTab = (data, isInputRow) => {
         (def, i) => `
           <tr>
             <td><input class="def-input" value="${escapeAttr(def.item || '')}" placeholder="Naam item..."></td>
-            <td><textarea class="def-sub-input" placeholder="Specificaties...">${escapeAttr(def.specifications || '')}</textarea></td>
+            <td><textarea class="def-sub-input" placeholder="Specificaties...">${escapeAttr(
+              def.specifications || ''
+            )}</textarea></td>
             <td>${createRadioGroup(`def_type_${i}`, DEFINITION_TYPES, def.type, true)}</td>
             <td><button class="btn-row-del-tiny" data-action="remove-row" type="button">×</button></td>
           </tr>
@@ -322,9 +465,10 @@ const renderIoTab = (data, isInputRow) => {
         <table class="io-table">
           <thead><tr><th>Criterium</th><th>Resultaat</th><th>Opmerking</th></tr></thead>
           <tbody>
-            ${IO_CRITERIA.map((c) => {
-              const qa = data.qa?.[c.key] || {};
-              return `
+            ${IO_CRITERIA
+              .map((c) => {
+                const qa = data.qa?.[c.key] || {};
+                return `
                 <tr>
                   <td>
                     <div style="font-weight:bold; color:#fff;">${escapeAttr(c.label)}</div>
@@ -342,10 +486,13 @@ const renderIoTab = (data, isInputRow) => {
                       true
                     )}
                   </td>
-                  <td><textarea id="note_${c.key}" class="io-note" placeholder="Opmerking...">${escapeAttr(qa.note || '')}</textarea></td>
+                  <td><textarea id="note_${c.key}" class="io-note" placeholder="Opmerking...">${escapeAttr(
+                    qa.note || ''
+                  )}</textarea></td>
                 </tr>
               `;
-            }).join('')}
+              })
+              .join('')}
           </tbody>
         </table>
       </div>
@@ -475,26 +622,38 @@ const setupPermanentListeners = () => {
   if (cancelBtn && modal) cancelBtn.onclick = () => (modal.style.display = "none");
   if (!content) return;
 
-  content.addEventListener("pointerenter", (e) => {
-    const opt = e.target.closest(".status-option");
-    if (!opt) return;
-    showTooltip(opt, e.clientX, e.clientY);
-  }, true);
+  content.addEventListener(
+    "pointerenter",
+    (e) => {
+      const opt = e.target.closest(".status-option");
+      if (!opt) return;
+      showTooltip(opt, e.clientX, e.clientY);
+    },
+    true
+  );
 
-  content.addEventListener("pointermove", (e) => {
-    const opt = e.target.closest(".status-option");
-    if (!opt) {
+  content.addEventListener(
+    "pointermove",
+    (e) => {
+      const opt = e.target.closest(".status-option");
+      if (!opt) {
+        hideTooltip();
+        return;
+      }
+      showTooltip(opt, e.clientX, e.clientY);
+    },
+    true
+  );
+
+  content.addEventListener(
+    "pointerleave",
+    (e) => {
+      const opt = e.target.closest(".status-option");
+      if (!opt) return;
       hideTooltip();
-      return;
-    }
-    showTooltip(opt, e.clientX, e.clientY);
-  }, true);
-
-  content.addEventListener("pointerleave", (e) => {
-    const opt = e.target.closest(".status-option");
-    if (!opt) return;
-    hideTooltip();
-  }, true);
+    },
+    true
+  );
 
   content.addEventListener("scroll", () => hideTooltip(), { passive: true });
   if (modal) modal.addEventListener("scroll", () => hideTooltip(), { passive: true });
@@ -503,6 +662,7 @@ const setupPermanentListeners = () => {
     if (e.key === "Escape") hideTooltip();
   });
 
+  // Sys-opt radio buttons
   content.addEventListener("click", (e) => {
     const opt = e.target.closest(".sys-opt");
     if (!opt) return;
@@ -522,6 +682,7 @@ const setupPermanentListeners = () => {
     if (input) input.value = opt.dataset.value;
   });
 
+  // Tab switching
   content.addEventListener("click", (e) => {
     const btn = e.target.closest(".tab-btn");
     if (!btn) return;
@@ -548,7 +709,7 @@ const setupPermanentListeners = () => {
     }
   });
 
-  // Proces status select (bestaand)
+  // Proces status select
   content.addEventListener("click", (e) => {
     const statusOpt = e.target.closest('.status-option[data-action="set-status"]');
     if (!statusOpt) return;
@@ -585,7 +746,7 @@ const setupPermanentListeners = () => {
     if (badSection) badSection.style.display = !isHappyLocal ? "block" : "none";
   });
 
-  // NEW: Werkbeleving select (Obstakel / Routine / Flow)
+  // Werkbeleving select
   content.addEventListener("click", (e) => {
     const opt = e.target.closest('.status-option[data-action="set-workexp"]');
     if (!opt) return;
@@ -596,7 +757,6 @@ const setupPermanentListeners = () => {
     const val = opt.dataset.val;
     const wasActive = (input.value || "") === val;
 
-    // clear all highlights
     content
       .querySelectorAll('.status-option[data-action="set-workexp"]')
       .forEach((el) => el.classList.remove("selected-hap", "selected-neu", "selected-sad"));
@@ -613,6 +773,15 @@ const setupPermanentListeners = () => {
     if (found?.cls) opt.classList.add(found.cls);
   });
 
+  // Gate checkbox toggle (show/hide fields)
+  content.addEventListener("change", (e) => {
+    if (e.target?.id !== "isGate") return;
+    const box = e.target;
+    const fields = $("gateFields");
+    if (fields) fields.style.display = box.checked ? "block" : "none";
+  });
+
+  // Dynamic lists / tables
   content.addEventListener("click", (e) => {
     const target = e.target;
 
@@ -669,6 +838,7 @@ const setupPermanentListeners = () => {
     }
   });
 
+  // Input linked source select
   content.addEventListener("change", (e) => {
     if (e.target?.id !== "inputSourceSelect") return;
 
@@ -711,12 +881,50 @@ export function saveModalDetails(closeModal = true) {
     const statusVal = $("processStatus")?.value ?? "";
     data.processStatus = statusVal === "" ? null : statusVal;
 
-    // NEW: werkbeleving opslaan
+    // Werkbeleving opslaan
     const expVal = $("workExp")?.value ?? "";
     data.workExp = expVal === "" ? null : expVal;
 
     const expNote = $("workExpNote");
     data.workExpNote = expNote ? expNote.value : "";
+
+    // Gate opslaan (Option B)
+    const isGateEl = $("isGate");
+    const gateFields = $("gateFields");
+    const isGate = !!isGateEl?.checked;
+    data.isGate = isGate;
+
+    if (!isGate) {
+      data.gate = null;
+    } else {
+      const checksSel = $("gateChecks");
+      const selectedCheckIds = checksSel
+        ? Array.from(checksSel.selectedOptions).map((o) => o.value).filter(Boolean)
+        : [];
+
+      const rule = $("gateRule")?.value || "ALL_OK";
+      const failTarget = $("gateFailTarget")?.value || "";
+      const passTarget = $("gatePassTarget")?.value || "";
+      const note = $("gateNote")?.value || "";
+
+      data.gate = {
+        rule,
+        checkProcessIds: selectedCheckIds,
+        onFailTargetProcessId: failTarget || null,
+        onPassTargetProcessId: passTarget || null,
+        note
+      };
+
+      // Basic guard: if fail target not chosen, keep null (you can enforce later)
+      if (!data.gate.checkProcessIds || data.gate.checkProcessIds.length === 0) {
+        // keep as-is; you might enforce later
+      }
+
+      // ensure UI remains consistent if fields hidden
+      if (gateFields && gateFields.style.display === "none") {
+        gateFields.style.display = "block";
+      }
+    }
 
     const typeVal = content.querySelector('input[name="metaType"]')?.value ?? "";
     data.type = typeVal === "" ? null : typeVal;
@@ -787,7 +995,12 @@ export function saveModalDetails(closeModal = true) {
           specifications: tr.querySelector("td:nth-child(2) textarea")?.value || "",
           type: tr.querySelector('td:nth-child(3) input[type="hidden"]')?.value || null
         }))
-        .filter((d) => d.item.trim() || d.specifications.trim() || (d.type != null && String(d.type).trim() !== ""));
+        .filter(
+          (d) =>
+            d.item.trim() ||
+            d.specifications.trim() ||
+            (d.type != null && String(d.type).trim() !== "")
+        );
     }
 
     const ioQual = $("ioTabQual");

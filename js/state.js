@@ -20,7 +20,35 @@ class StateManager {
     this._pendingMeta = null;
     this._suspendNotify = 0;
 
+    this._lastHistoryTs = 0;
+
     this.loadFromStorage();
+  }
+
+  /* =========================================================
+     ID helpers (for stable process IDs used by gates/checks)
+     ========================================================= */
+
+  _makeId(prefix = 'id') {
+    try {
+      if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return `${prefix}_${crypto.randomUUID()}`;
+      }
+    } catch (_) {}
+    return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  }
+
+  _ensureProcessIds(project) {
+    const sheets = project?.sheets || [];
+    sheets.forEach((sheet) => {
+      (sheet.columns || []).forEach((col) => {
+        const slot = col?.slots?.[3];
+        if (!slot) return;
+        if (!slot.id || String(slot.id).trim() === '') {
+          slot.id = this._makeId('proc');
+        }
+      });
+    });
   }
 
   subscribe(listenerFn) {
@@ -137,6 +165,7 @@ class StateManager {
 
     if (!Array.isArray(merged.sheets) || merged.sheets.length === 0) {
       merged.sheets = fresh.sheets;
+      this._ensureProcessIds(merged);
       return merged;
     }
 
@@ -151,11 +180,15 @@ class StateManager {
           return;
         }
 
-        col.slots = col.slots.map((slot) => {
+        col.slots = col.slots.map((slot, slotIdx) => {
           const clean = createSticky();
           const s = slot || {};
 
-          return {
+          // Gate object merge (only meaningful on process slot, but safe everywhere)
+          const cleanGate = clean.gate && typeof clean.gate === 'object' ? clean.gate : {};
+          const sGate = s.gate && typeof s.gate === 'object' ? s.gate : {};
+
+          const mergedSlot = {
             ...clean,
             ...s,
 
@@ -163,19 +196,43 @@ class StateManager {
             qa: { ...clean.qa, ...(s.qa || {}) },
             systemData: { ...clean.systemData, ...(s.systemData || {}) },
 
-            // Keep existing fields
+            // Existing fields
             linkedSourceId: s.linkedSourceId ?? clean.linkedSourceId,
             inputDefinitions: Array.isArray(s.inputDefinitions) ? s.inputDefinitions : clean.inputDefinitions,
             disruptions: Array.isArray(s.disruptions) ? s.disruptions : clean.disruptions,
 
-            // NEW: Werkbeleving / werkplezier velden
+            // Werkbeleving / werkplezier
             workExp: s.workExp ?? clean.workExp,
-            workExpNote: s.workExpNote ?? clean.workExpNote
+            workExpNote: s.workExpNote ?? clean.workExpNote,
+
+            // NEW: stable process-id + gate config
+            id: s.id ?? clean.id,
+            isGate: s.isGate ?? clean.isGate,
+            gate: { ...cleanGate, ...sGate }
           };
+
+          // Ensure process slot always has an id (needed for gates/checks)
+          if (slotIdx === 3 && (!mergedSlot.id || String(mergedSlot.id).trim() === '')) {
+            mergedSlot.id = this._makeId('proc');
+          }
+
+          // Normalize gate.checkProcessIds to array
+          if (mergedSlot.gate) {
+            if (!Array.isArray(mergedSlot.gate.checkProcessIds)) mergedSlot.gate.checkProcessIds = [];
+            mergedSlot.gate.onFailTargetProcessId =
+              mergedSlot.gate.onFailTargetProcessId || null;
+            mergedSlot.gate.onPassTargetProcessId =
+              mergedSlot.gate.onPassTargetProcessId || null;
+            mergedSlot.gate.rule = mergedSlot.gate.rule || 'ALL_OK';
+            mergedSlot.gate.note = mergedSlot.gate.note || '';
+          }
+
+          return mergedSlot;
         });
       });
     });
 
+    this._ensureProcessIds(merged);
     return merged;
   }
 
@@ -239,6 +296,10 @@ class StateManager {
     const newSheet = createSheet(name || `Proces ${this.project.sheets.length + 1}`);
     this.project.sheets.push(newSheet);
     this.project.activeSheetId = newSheet.id;
+
+    // Ensure process IDs exist (new sheet/columns)
+    this._ensureProcessIds(this.project);
+
     this.notify({ reason: 'sheets' }, { clone: false });
   }
 
@@ -273,6 +334,9 @@ class StateManager {
 
     if (afterIndex === -1) sheet.columns.push(newCol);
     else sheet.columns.splice(afterIndex + 1, 0, newCol);
+
+    // Ensure process IDs exist (new column)
+    this._ensureProcessIds(this.project);
 
     this.notify({ reason: 'columns' }, { clone: false });
   }

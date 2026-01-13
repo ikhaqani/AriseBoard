@@ -48,7 +48,6 @@ function escapeAttr(v) {
 function getWorkExpMeta(workExp) {
   const v = String(workExp || '').toUpperCase();
 
-  // Verwachte waarden: 'OBSTACLE' | 'ROUTINE' | 'FLOW'
   if (v === 'OBSTACLE') {
     return {
       icon: '🛠️',
@@ -80,11 +79,100 @@ function buildWorkExpBadge(slot) {
   const note = String(slot?.workExpNote || '').trim();
   const title = note ? `${meta.context}\n\nNotitie: ${note}` : meta.context;
 
-  // Positionering via CSS: .workexp-badge { position:absolute; top:2px; right:26px; ... }
-  // (right:26px zodat het niet botst met 🔗 op input)
   return `
     <div class="workexp-badge" title="${escapeAttr(title)}" aria-label="${escapeAttr(meta.short)}">
       <span class="workexp-icn">${meta.icon}</span>
+    </div>
+  `;
+}
+
+/* =========================================================
+   Gate / Checks (Optie B) — visualisatie op board
+   - Gate badge op proces-sticky die een gate is
+   - Check badge op proces-sticky die door een gate wordt gebruikt
+   ========================================================= */
+
+function getProcessIdForColumn(sheet, colIdx) {
+  const procSlot = sheet?.columns?.[colIdx]?.slots?.[3];
+  if (procSlot?.id) return String(procSlot.id);
+  const sid = sheet?.id ? String(sheet.id) : 'sheet';
+  return `${sid}:col${colIdx}:process`;
+}
+
+function getProcessLabelForColumn(sheet, colIdx) {
+  const procSlot = sheet?.columns?.[colIdx]?.slots?.[3];
+  const raw = (procSlot?.text || '').trim();
+  const name = raw ? raw.replace(/\s+/g, ' ') : 'Proces (geen titel)';
+  const short = name.length > 42 ? name.slice(0, 42) + '…' : name;
+  return `${colIdx + 1}. ${short}`;
+}
+
+function findColumnIndexByProcessId(sheet, pid) {
+  const cols = sheet?.columns || [];
+  for (let i = 0; i < cols.length; i++) {
+    const id = getProcessIdForColumn(sheet, i);
+    if (String(id) === String(pid)) return i;
+  }
+  return -1;
+}
+
+function buildGateBadge({ sheet, colIdx, slot }) {
+  if (!slot?.isGate) return '';
+
+  const gate = slot?.gate || {};
+  const checks = Array.isArray(gate.checkProcessIds) ? gate.checkProcessIds : [];
+  const failPid = gate.onFailTargetProcessId || '';
+  const passPid = gate.onPassTargetProcessId || '';
+
+  const failIdx = failPid ? findColumnIndexByProcessId(sheet, failPid) : -1;
+  const passIdx = passPid ? findColumnIndexByProcessId(sheet, passPid) : -1;
+
+  const failLbl = failIdx >= 0 ? getProcessLabelForColumn(sheet, failIdx) : (failPid ? String(failPid) : '—');
+  const passLbl =
+    passPid && passIdx >= 0 ? getProcessLabelForColumn(sheet, passIdx) : (passPid ? String(passPid) : 'Normale flow');
+
+  const checkLbls = checks
+    .map((pid) => {
+      const idx = findColumnIndexByProcessId(sheet, pid);
+      return idx >= 0 ? getProcessLabelForColumn(sheet, idx) : String(pid);
+    })
+    .join('\n');
+
+  const title =
+    `GATE (regel: ALL_OK)\n` +
+    `Checks (${checks.length}):\n${checkLbls || '—'}\n\n` +
+    `PASS → ${passLbl}\n` +
+    `FAIL → ${failLbl}` +
+    (gate.note ? `\n\nNotitie:\n${String(gate.note).trim()}` : '');
+
+  // Inline style zodat je direct ziet zonder extra CSS.
+  return `
+    <div class="gate-badge"
+         title="${escapeAttr(title)}"
+         aria-label="Gate"
+         style="position:absolute; top:2px; left:4px; font-size:10px; font-weight:900; letter-spacing:.6px;
+                padding:2px 6px; border-radius:10px; background:rgba(255,202,40,.92); color:#1b1b1b;
+                border:1px solid rgba(0,0,0,.18); box-shadow:0 2px 4px rgba(0,0,0,.25);">
+      GATE
+    </div>
+  `;
+}
+
+function buildCheckBadge({ usedByGates }) {
+  if (!usedByGates || usedByGates.length === 0) return '';
+
+  const title =
+    `CHECK\nGebruikt door gates:\n` +
+    usedByGates.map((x) => `- ${x}`).join('\n');
+
+  return `
+    <div class="check-badge"
+         title="${escapeAttr(title)}"
+         aria-label="Check"
+         style="position:absolute; top:2px; left:56px; font-size:10px; font-weight:900; letter-spacing:.6px;
+                padding:2px 6px; border-radius:10px; background:rgba(144,202,249,.22); color:#e3f2fd;
+                border:1px solid rgba(144,202,249,.35); box-shadow:0 2px 4px rgba(0,0,0,.20);">
+      CHECK
     </div>
   `;
 }
@@ -190,7 +278,7 @@ function attachStickyInteractions({ stickyEl, textEl, colIdx, slotIdx, openModal
 
     if (
       e.target.closest(
-        ".sticky-grip, .qa-score-badge, .id-tag, .label-tl, .label-tr, .label-br, .link-icon, .workexp-badge, .btn-col-action, .col-actions, .connector-add, .connector-delete, .connector-input-minimal"
+        ".sticky-grip, .qa-score-badge, .id-tag, .label-tl, .label-tr, .label-br, .link-icon, .workexp-badge, .gate-badge, .check-badge, .btn-col-action, .col-actions, .connector-add, .connector-delete, .connector-input-minimal"
       )
     ) {
       return;
@@ -240,11 +328,12 @@ function buildSlotHTML({
   myInputId,
   myOutputId,
   isLinked,
-  scoreBadgeHTML
+  scoreBadgeHTML,
+  gateHTML,
+  checkHTML
 }) {
   const procEmoji = (slotIdx === 3 && slot.processStatus) ? getProcessEmoji(slot.processStatus) : "";
 
-  // NEW: alleen op Proces (slotIdx === 3)
   const workExpHTML = (slotIdx === 3) ? buildWorkExpBadge(slot) : "";
 
   return `
@@ -261,6 +350,9 @@ function buildSlotHTML({
       ${scoreBadgeHTML}
 
       ${workExpHTML}
+
+      ${gateHTML || ''}
+      ${checkHTML || ''}
 
       ${isLinked ? '<span class="link-icon" style="position:absolute; top:2px; right:4px;">🔗</span>' : ''}
 
@@ -313,10 +405,14 @@ function renderConnector({ frag, activeSheet, col, colIdx }) {
       inp.value = col.transitionNext || "";
       if (exportSpan) exportSpan.textContent = inp.value;
 
-      inp.addEventListener("input", (e) => {
-        state.setTransition(colIdx, e.target.value);
-        if (exportSpan) exportSpan.textContent = e.target.value;
-      }, { passive: true });
+      inp.addEventListener(
+        "input",
+        (e) => {
+          state.setTransition(colIdx, e.target.value);
+          if (exportSpan) exportSpan.textContent = e.target.value;
+        },
+        { passive: true }
+      );
     }
   } else {
     const btn = document.createElement("button");
@@ -354,6 +450,27 @@ function renderColumnsOnly(openModalFn) {
   let localOutCounter = 0;
 
   const stats = { happy: 0, neutral: 0, sad: 0 };
+
+  // Build reverse mapping: processId -> [gate labels that reference it]
+  const reverseCheckMap = {};
+  activeSheet.columns.forEach((col, colIdx) => {
+    if (col.isVisible === false) return;
+    const procSlot = col.slots?.[3];
+    if (!procSlot?.isGate || !procSlot?.gate) return;
+
+    const gatePid = getProcessIdForColumn(activeSheet, colIdx);
+    const gateLbl = getProcessLabelForColumn(activeSheet, colIdx);
+
+    const checks = Array.isArray(procSlot.gate.checkProcessIds) ? procSlot.gate.checkProcessIds : [];
+    checks.forEach((pid) => {
+      const k = String(pid);
+      if (!reverseCheckMap[k]) reverseCheckMap[k] = [];
+      reverseCheckMap[k].push(gateLbl);
+    });
+
+    // Optional: also register the gate itself (can be useful later)
+    reverseCheckMap[String(gatePid)] = reverseCheckMap[String(gatePid)] || reverseCheckMap[String(gatePid)];
+  });
 
   const frag = document.createDocumentFragment();
 
@@ -425,6 +542,18 @@ function renderColumnsOnly(openModalFn) {
       if (slot.type === "Besluit") typeIcon = "💎";
       if (slot.type === "Wacht") typeIcon = "⏳";
 
+      // Gate/Check visual only for process slot
+      let gateHTML = "";
+      let checkHTML = "";
+      if (slotIdx === 3) {
+        gateHTML = buildGateBadge({ sheet: activeSheet, colIdx, slot });
+
+        const myPid = getProcessIdForColumn(activeSheet, colIdx);
+        const usedBy = reverseCheckMap[String(myPid)] || [];
+        // If this process itself is a gate, still can also be a check; badge is ok.
+        checkHTML = buildCheckBadge({ usedByGates: usedBy });
+      }
+
       const slotDiv = document.createElement("div");
       slotDiv.className = "slot";
       slotDiv.innerHTML = buildSlotHTML({
@@ -436,7 +565,9 @@ function renderColumnsOnly(openModalFn) {
         myInputId,
         myOutputId,
         isLinked,
-        scoreBadgeHTML
+        scoreBadgeHTML,
+        gateHTML,
+        checkHTML
       });
 
       const textEl = slotDiv.querySelector(".text");
@@ -480,7 +611,6 @@ function updateSingleText(colIdx, slotIdx) {
   const slotEl = colEl.querySelector(`.sticky[data-col="${colIdx}"][data-slot="${slotIdx}"] .text`);
   if (!slotEl) return false;
 
-  // Guard: do not overwrite while user is typing (prevents caret jump / reversed typing)
   if (slotEl && slotEl.isContentEditable && document.activeElement === slotEl) return true;
 
   slotEl.textContent = slot.text ?? '';
