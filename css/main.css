@@ -664,6 +664,8 @@
     word-break: break-word;
     white-space: pre-wrap;
     font-family: "Inter", sans-serif;
+    direction: ltr;
+    unicode-bidi: plaintext;
 }
 
 .label-tl,
@@ -1390,6 +1392,14 @@ textarea {
     border-top-color: currentColor;
     border-radius: 50%;
     animation: spin 0.6s linear infinite;
+}
+
+# Fix: prevent reversed typing in contenteditable/text inputs (RTL/bidi issues)
+input,
+textarea,
+[contenteditable="true"] {
+    direction: ltr;
+    unicode-bidi: plaintext;
 }
 
 /* =========================================================
