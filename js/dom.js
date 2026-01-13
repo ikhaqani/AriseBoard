@@ -26,43 +26,54 @@ function getProcessEmoji(status) {
   return s?.emoji || '';
 }
 
-function syncRowHeights() {
+let _syncRaf = 0;
+
+function scheduleSyncRowHeights() {
+  if (_syncRaf) cancelAnimationFrame(_syncRaf);
+  _syncRaf = requestAnimationFrame(() => {
+    _syncRaf = 0;
+    syncRowHeightsNow();
+  });
+}
+
+function syncRowHeightsNow() {
   const rowHeadersEl = $("row-headers");
   const rowHeaders = rowHeadersEl?.children;
   if (!rowHeaders || !rowHeaders.length) return;
 
-  const heights = [];
+  const cols = document.querySelectorAll(".col");
+  if (!cols.length) return;
+
+  const heights = Array(6).fill(160);
+
+  cols.forEach((col) => {
+    const slotNodes = col.querySelectorAll(".slots .slot");
+    for (let r = 0; r < 6; r++) {
+      const slot = slotNodes[r];
+      if (!slot) continue;
+      const sticky = slot.firstElementChild;
+      if (!sticky) continue;
+      const h = sticky.offsetHeight;
+      if (h > heights[r]) heights[r] = h;
+    }
+  });
 
   for (let r = 0; r < 6; r++) {
-    let max = 160;
-    const slots = document.querySelectorAll(`.col .slots .slot:nth-child(${r + 1})`);
-    slots.forEach((s) => {
-      const sticky = s.firstElementChild;
-      if (!sticky) return;
-      const h = sticky.offsetHeight;
-      if (h > max) max = h;
+    const hStr = `${heights[r]}px`;
+    if (rowHeaders[r]) rowHeaders[r].style.height = hStr;
+
+    cols.forEach((col) => {
+      const slotNodes = col.querySelectorAll(".slots .slot");
+      if (slotNodes[r]) slotNodes[r].style.height = hStr;
     });
-    heights.push(max);
   }
 
-  requestAnimationFrame(() => {
-    for (let r = 0; r < 6; r++) {
-      const hStr = `${heights[r]}px`;
-      if (rowHeaders[r]) rowHeaders[r].style.height = hStr;
+  const gapSize = 20;
+  const processOffset = heights[0] + heights[1] + heights[2] + 3 * gapSize;
 
-      const slots = document.querySelectorAll(`.col .slots .slot:nth-child(${r + 1})`);
-      for (let i = 0; i < slots.length; i++) slots[i].style.height = hStr;
-    }
-
-    if (heights.length >= 3) {
-      const gapSize = 20;
-      const processOffset = heights[0] + heights[1] + heights[2] + 3 * gapSize;
-
-      document.querySelectorAll(".col-connector").forEach((c) => {
-        if (!c.classList.contains("parallel-connector")) {
-          c.style.paddingTop = `${processOffset}px`;
-        }
-      });
+  document.querySelectorAll(".col-connector").forEach((c) => {
+    if (!c.classList.contains("parallel-connector")) {
+      c.style.paddingTop = `${processOffset}px`;
     }
   });
 }
@@ -307,13 +318,13 @@ export function renderBoard(openModalFn) {
     const actionsEl = document.createElement("div");
     actionsEl.className = "col-actions";
     actionsEl.innerHTML = `
-      <button class="btn-col-action btn-arrow" data-action="move" data-dir="-1">←</button>
-      <div class="btn-col-action btn-move-col">↔</div>
-      <button class="btn-col-action btn-arrow" data-action="move" data-dir="1">→</button>
-      ${colIdx > 0 ? `<button class="btn-col-action btn-parallel ${col.isParallel ? "active" : ""}" data-action="parallel">∥</button>` : ""}
-      <button class="btn-col-action btn-hide-col" data-action="hide">👁️</button>
-      <button class="btn-col-action btn-add-col-here" data-action="add">+</button>
-      <button class="btn-col-action btn-delete-col" data-action="delete">×</button>
+      <button class="btn-col-action btn-arrow" data-action="move" data-dir="-1" type="button">←</button>
+      <div class="btn-col-action btn-move-col" aria-hidden="true">↔</div>
+      <button class="btn-col-action btn-arrow" data-action="move" data-dir="1" type="button">→</button>
+      ${colIdx > 0 ? `<button class="btn-col-action btn-parallel ${col.isParallel ? "active" : ""}" data-action="parallel" type="button">∥</button>` : ""}
+      <button class="btn-col-action btn-hide-col" data-action="hide" type="button">👁️</button>
+      <button class="btn-col-action btn-add-col-here" data-action="add" type="button">+</button>
+      <button class="btn-col-action btn-delete-col" data-action="delete" type="button">×</button>
     `;
     colEl.appendChild(actionsEl);
 
@@ -391,16 +402,21 @@ export function renderBoard(openModalFn) {
   if (neutralEl) neutralEl.textContent = stats.neutral;
   if (sadEl) sadEl.textContent = stats.sad;
 
-  setTimeout(syncRowHeights, 0);
+  scheduleSyncRowHeights();
 }
 
-export function setupDelegatedEvents() {
-  const colsContainer = $("cols");
-  if (!colsContainer) return;
+let _delegatedBound = false;
 
-  const handle = (e) => {
+export function setupDelegatedEvents() {
+  if (_delegatedBound) return;
+  _delegatedBound = true;
+
+  const act = (e) => {
     const btn = e.target.closest(".btn-col-action");
     if (!btn) return;
+
+    const action = btn.dataset.action;
+    if (!action) return;
 
     e.preventDefault();
     e.stopPropagation();
@@ -409,7 +425,7 @@ export function setupDelegatedEvents() {
     if (!colEl) return;
 
     const idx = parseInt(colEl.dataset.idx, 10);
-    const action = btn.dataset.action;
+    if (!Number.isFinite(idx)) return;
 
     switch (action) {
       case "move":
@@ -437,7 +453,7 @@ export function setupDelegatedEvents() {
     }
   };
 
-  colsContainer.addEventListener("pointerdown", handle, true);
-  colsContainer.addEventListener("mousedown", handle, true);
-  colsContainer.addEventListener("touchstart", handle, { capture: true, passive: false });
+  document.addEventListener("pointerdown", act, true);
+  document.addEventListener("mousedown", act, true);
+  document.addEventListener("touchstart", act, { capture: true, passive: false });
 }
