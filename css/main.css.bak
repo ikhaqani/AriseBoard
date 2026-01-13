@@ -379,29 +379,13 @@
     overflow: auto;
     padding: 160px 40px 60px 40px;
     display: flex;
-
-    /* FIX: allow always scrolling back to the very first column */
-    justify-content: flex-start;
-
-    /* Keep top alignment */
+    justify-content: center;
     align-items: flex-start;
-
     transition: padding-top 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-/* Optional: center board when it fits, without breaking scroll */
-#board {
-    margin-left: auto;
-    margin-right: auto;
 }
 
 .viewport.expanded-view {
     padding-top: 60px;
-}
-
-/* Wrapper around #board to shrink-wrap content width (optional but helps) */
-.board-scale-wrapper {
-    display: inline-block;
 }
 
 #board {

@@ -83,7 +83,6 @@
   </div>
 
   <div class="viewport" id="viewport">
-  <div class="board-scale-wrapper" id="boardScale">
     <div id="board">
       <div id="row-headers"></div>
       
