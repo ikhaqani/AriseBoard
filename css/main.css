@@ -1036,7 +1036,7 @@ textarea {
 textarea:focus {
     border-color: var(--ui-accent);
     background: rgba(0, 0, 0, 0.5);
-    box-shadow: 0 0 0 2px rgba(41, 121, 255, 0.2);
+    box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.2);
 }
 
 textarea {
@@ -1390,4 +1390,42 @@ textarea {
     border-top-color: currentColor;
     border-radius: 50%;
     animation: spin 0.6s linear infinite;
+}
+
+/* =========================================================
+   Custom tooltip (used by modals.js for proces status hover)
+   ========================================================= */
+#customTooltip {
+    position: fixed;
+    left: 0;
+    top: 0;
+    transform: translate(-9999px, -9999px);
+    z-index: 10000;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 120ms ease, transform 120ms ease;
+    max-width: 360px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: rgba(20, 24, 28, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(10px);
+    color: #ffffff;
+    font-family: "Inter", sans-serif;
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+#customTooltip [data-tt="title"] {
+    font-weight: 900;
+    font-size: 11px;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    opacity: 0.9;
+    margin-bottom: 6px;
+}
+
+#customTooltip [data-tt="body"] {
+    opacity: 0.85;
 }
